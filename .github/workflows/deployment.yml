@@ -1,0 +1,121 @@
+name: Infra + BACK - Deployment
+run-name: "${{ github.event.inputs.environment }} - @${{ github.actor }} - Deployment"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        description: Environment to deploy
+        default: "staging"
+        options:
+          - dev
+          - staging
+          - preprod
+          - prod
+
+jobs:
+  deployment:
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write # required to use OIDC authentication
+      contents: read # required to checkout the code from the repo
+
+    steps:
+      - name: GLOBAL - Checkout code
+        uses: actions/checkout@v3
+
+      - name: GLOBAL - Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "22.x"
+
+      - name: GLOBAL - Security - Secret Scanning
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --results=verified,unknown
+
+      - name: GLOBAL - Configure aws credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOYMENT_ROLE_ARN }}
+          role-duration-seconds: 3600
+          aws-region: ${{ secrets.GLOBAL_AWS_REGION }}
+
+      - name: BACK - Setup SAM
+        uses: aws-actions/setup-sam@v2
+
+      - name: BACK - SAM Build
+        run: |
+          PARAMS="\
+            ParameterKey=Environment,ParameterValue=\"${{ inputs.environment }}\",
+            ParameterKey=Auth0IssuerUrl,ParameterValue=\"${{ vars.GLOBAL_AUTH0_ISSUER_URL }}\",
+            ParameterKey=Auth0Audience,ParameterValue=\"${{ vars.GLOBAL_AUTH0_AUDIENCE }}\",
+            ParameterKey=LocalDynamodbEndpoint,ParameterValue=\"\""
+
+          sam build --debug --use-container --parameter-overrides $PARAMS
+        working-directory: back
+
+      - name: BACK - SAM Deploy
+        working-directory: back
+        run: |
+          PARAMS="\
+            ParameterKey=Environment,ParameterValue=\"${{ inputs.environment }}\",
+            ParameterKey=Auth0IssuerUrl,ParameterValue=\"${{ vars.GLOBAL_AUTH0_ISSUER_URL }}\",
+            ParameterKey=Auth0Audience,ParameterValue=\"${{ vars.GLOBAL_AUTH0_AUDIENCE }}\",
+            ParameterKey=LocalDynamodbEndpoint,ParameterValue=\"\""
+
+          # Finally Deploy
+          sam deploy --capabilities CAPABILITY_NAMED_IAM --stack-name "${{ inputs.environment }}-${{ github.event.repository.name }}" --no-confirm-changeset --no-fail-on-empty-changeset --s3-bucket ${{ secrets.AWS_DEPLOYMENT_BUCKET }} --s3-prefix="${{ inputs.environment }}-${{ github.event.repository.name }}" --parameter-overrides $PARAMS --disable-rollback
+
+      - name: BACK - Export OpenAPI Definition
+        working-directory: back
+        run: |
+          # Retrieve API ID from SSM Parameter Store
+          API_ID=$(aws ssm get-parameter --name "/${{ inputs.environment }}/maijin-defi-challenge/api_id" --query "Parameter.Value" --output text)
+
+          DOCUMENTATION_BUCKET=$(aws ssm get-parameter --name "/${{ inputs.environment }}/maijin-defi-challenge/documentation_bucket" --query "Parameter.Value" --output text)
+          
+          # Export OpenAPI definition in JSON format
+          aws apigatewayv2 export-api --api-id $API_ID --output-type JSON  --specification OAS30 --stage-name ${{ inputs.environment }} openapi.json
+          
+          # Upload to S3 for CloudFront distribution
+          aws s3 cp openapi.json s3://${DOCUMENTATION_BUCKET}/docs/openapi.json --cache-control "max-age=3600"
+          
+          echo "OpenAPI definition exported and uploaded for CloudFront access"
+
+      - name: BACK - Install Redoc CLI
+        working-directory: back
+        run: npm install -g redoc-cli
+
+      - name: BACK - Generate Redoc Documentation
+        working-directory: back
+        run: |
+          # Generate beautiful HTML documentation using Redoc
+          redoc-cli bundle openapi.json -o redoc.html --title "UCI Contacts Pictures API Documentation"
+
+          DOCUMENTATION_BUCKET=$(aws ssm get-parameter --name "/${{ inputs.environment }}/maijin-defi-challenge/documentation_bucket" --query "Parameter.Value" --output text)
+          
+          # Upload the HTML documentation to S3
+          aws s3 cp redoc.html s3://${DOCUMENTATION_BUCKET}/docs/index.html --cache-control "max-age=3600"
+          
+          echo "Redoc documentation generated and uploaded to documentation bucket"
+
+      - name: BACK - Clear CloudFront Cache
+        working-directory: back
+        run: |
+          # Retrieve CloudFront distribution ID from SSM Parameter Store
+          CLOUDFRONT_ID=$(aws ssm get-parameter --name "/${{ inputs.environment }}/maijin-defi-challenge/cloudfront_distribution_id" --query "Parameter.Value" --output text)
+          
+          # Create invalidation to clear the cache
+          INVALIDATION_ID=$(aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_ID --paths "/*" --query "Invalidation.Id" --output text)
+          
+          echo "CloudFront cache invalidation created with ID: $INVALIDATION_ID"
+          echo "Waiting for invalidation to complete..."
+          
+          # Wait for the invalidation to complete (optional but provides feedback)
+          aws cloudfront wait invalidation-completed --distribution-id $CLOUDFRONT_ID --id $INVALIDATION_ID
+          
+          echo "CloudFront cache invalidation completed successfully"

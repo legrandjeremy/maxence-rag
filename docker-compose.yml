@@ -1,0 +1,32 @@
+services:
+ dynamodb-local-maijin-defi-challenge2:
+   command: "-jar DynamoDBLocal.jar -sharedDb -dbPath ./data"
+   image: "amazon/dynamodb-local:latest"
+   container_name: dynamodb-local-maijin-defi-challenge2
+   environment:
+     AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+     AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+     AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+   ports:
+     - "8000:8000"
+   volumes:
+     - "./docker/dynamodb:/home/dynamodblocal/data"
+   working_dir: /home/dynamodblocal
+
+ dynamodb-init-maijin-defi-challenge2:
+   image: amazon/aws-cli
+   depends_on:
+    - dynamodb-local-maijin-defi-challenge2
+   environment:
+     AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+     AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+     AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+   volumes:
+    - ./docker/schemas:/schemas
+   entrypoint: >
+    sh -c "
+      until curl -s http://dynamodb-local-maijin-defi-challenge:8000; do
+        echo 'Waiting for DynamoDB Local to be ready...';
+        sleep 2;
+      done;
+      aws dynamodb create-table --endpoint-url http://dynamodb-local-maijin-defi-challenge:8000 --cli-input-json file:///schemas/maijin-defi-challenge-schema.json;"

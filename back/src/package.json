@@ -1,0 +1,68 @@
+{
+  "name": "@player-management/backend",
+  "version": "1.0.0",
+  "description": "Player Management System Backend",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "author": "Player Management Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:player-management/backend.git"
+  },
+  "files": [
+    "dist/**/*"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "prebuild": "npm run clean",
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint '*.ts' --quiet --fix",
+    "compile": "tsc",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "dependencies": {
+    "@aws-lambda-powertools/logger": "2.13.1",
+    "@aws-sdk/client-dynamodb": "3.744.0",
+    "@aws-sdk/lib-dynamodb": "3.744.0",
+    "@aws-sdk/client-s3": "3.744.0",
+    "@aws-sdk/s3-request-presigner": "3.744.0",
+    "@aws-sdk/util-dynamodb": "3.744.0",
+    "@aws-sdk/client-bedrock-runtime": "3.744.0",
+    "@aws-sdk/client-bedrock-agent-runtime": "3.744.0",
+    "auth0": "^4.12.0",
+    "axios": "1.7.9",
+    "esbuild": "0.25.2",
+    "uuid": "11.0.5"
+  },
+  "devDependencies": {
+    "@jest/globals": "29.2.0",
+    "@types/aws-lambda": "8.10.92",
+    "@types/jest": "29.2.0",
+    "@types/node": "20.5.7",
+    "@types/uuid": "10.0.0",
+    "@typescript-eslint/eslint-plugin": "5.10.2",
+    "@typescript-eslint/parser": "5.10.2",
+    "aws-sdk-client-mock": "3.0.1",
+    "eslint": "8.8.0",
+    "eslint-config-prettier": "8.3.0",
+    "eslint-plugin-prettier": "4.0.0",
+    "jest": "29.2.1",
+    "prettier": "2.5.1",
+    "ts-jest": "29.0.5",
+    "ts-node": "10.9.1",
+    "typescript": "4.8.4"
+  }
+}

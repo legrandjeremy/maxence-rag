@@ -1,0 +1,794 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: |
+  Player Management System
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues:
+      - dev
+      - staging
+      - preprod
+      - prod
+    Default: staging
+  Auth0IssuerUrl:
+    Type: String
+    Default: https://example.auth0.com/
+  Auth0Audience:
+    Type: String
+    Default: player-management-api
+  Auth0ManagementClientId:
+    Type: String
+    Description: Auth0 Management API Client ID
+    NoEcho: true
+  Auth0ManagementClientSecret:
+    Type: String
+    Description: Auth0 Management API Client Secret
+    NoEcho: true
+  Auth0AdminRoleId:
+    Type: String
+    Description: Auth0 Role ID for admin users
+  Auth0TeamManagerRoleId:
+    Type: String
+    Description: Auth0 Role ID for team manager users
+  Auth0UserRoleId:
+    Type: String
+    Description: Auth0 Role ID for regular users
+  DynamodbEndpoint:
+    Type: String
+    Default: http://host.docker.internal:8000
+
+Globals:
+  Function:
+    Architectures:
+      - x86_64
+    Runtime: nodejs18.x
+    CodeUri: .
+    Timeout: 30
+    MemorySize: 512
+
+Resources:
+  ApiUrlSSMParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /${Environment}/player-management/api_url
+      Type: String
+      Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
+      Description: Base URL for the Player Management API
+
+  ApiIdSSMParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /${Environment}/player-management/api_id
+      Type: String
+      Value: !Ref Api
+      Description: ID for the Player Management API
+
+  PlayerManagementDocumentsBucketSSMParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /${Environment}/player-management/documents_bucket
+      Type: String
+      Value: !Ref PlayerManagementDocumentsBucket
+      Description: Bucket for the Player Management documents
+
+  PlayerManagementCloudFrontDistributionIdSSMParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /${Environment}/player-management/cloudfront_distribution_id
+      Type: String
+      Value: !Ref PlayerManagementCloudFrontDistribution
+      Description: ID for the Player Management CloudFront distribution
+
+  PlayerManagementTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${Environment}-player-management
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+        - AttributeName: GSI2PK
+          AttributeType: S
+        - AttributeName: GSI2SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: GSI2
+          KeySchema:
+            - AttributeName: GSI2PK
+              KeyType: HASH
+            - AttributeName: GSI2SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  PlayerManagementDocumentsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${Environment}-player-management-documents
+      VersioningConfiguration:
+        Status: Enabled
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - '*'
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+              - HEAD
+            AllowedOrigins:
+              - '*'
+            MaxAge: 3600
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  CloudFrontOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub OAI for ${Environment}-player-management
+
+  PlayerManagementDocumentsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref PlayerManagementDocumentsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity
+                ${CloudFrontOriginAccessIdentity}
+            Action: s3:GetObject
+            Resource: !Sub ${PlayerManagementDocumentsBucket.Arn}/docs/*
+
+  PlayerManagementCloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - DomainName: !GetAtt PlayerManagementDocumentsBucket.RegionalDomainName
+            Id: DocumentsOrigin
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}
+        Enabled: true
+        DefaultCacheBehavior:
+          TargetOriginId: DocumentsOrigin
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          MinTTL: 31536000
+          DefaultTTL: 31536000
+          MaxTTL: 31536000
+        CacheBehaviors:
+          - PathPattern: docs/*
+            TargetOriginId: DocumentsOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+            ForwardedValues:
+              QueryString: false
+              Cookies:
+                Forward: none
+            MinTTL: 31536000
+            DefaultTTL: 31536000
+            MaxTTL: 31536000
+        PriceClass: PriceClass_All
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+        Comment: !Sub ${Environment} - player-management
+        DefaultRootObject: index.html
+        HttpVersion: http2and3
+
+  PlayerManagementIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${Environment}-player-management
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub ${Environment}-player-management
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: log
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                  - logs:FilterLogEvents
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - dynamodb:Query
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:PutItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
+                Resource:
+                  - !GetAtt PlayerManagementTable.Arn
+                  - !Sub ${PlayerManagementTable.Arn}/index/*
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt PlayerManagementDocumentsBucket.Arn
+                  - !Sub ${PlayerManagementDocumentsBucket.Arn}/*
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource:
+                  - arn:aws:bedrock:us-east-1::foundation-model/*
+              - Effect: Allow
+                Action:
+                  - bedrock:Retrieve
+                  - bedrock:RetrieveAndGenerate
+                Resource:
+                  - arn:aws:bedrock:us-east-1:*:knowledge-base/*
+
+  Api:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Sub ${Environment}
+      FailOnWarnings: true
+      Auth:
+        Authorizers:
+          Auth0Authorizer:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              audience:
+                - !Ref Auth0Audience
+              issuer: !Ref Auth0IssuerUrl
+        DefaultAuthorizer: Auth0Authorizer
+      CorsConfiguration:
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - Authorization
+          - Content-Type
+        AllowOrigins:
+          - '*'
+        MaxAge: 600
+
+  # User Management Functions
+  CreateUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-player-management-create-user
+      CodeUri: src/
+      Handler: handlers/users/create-user.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
+          AUTH0_DOMAIN: !Sub "${Auth0IssuerUrl}"
+          AUTH0_AUDIENCE: !Ref Auth0Audience
+          AUTH0_MANAGEMENT_CLIENT_ID: !Ref Auth0ManagementClientId
+          AUTH0_MANAGEMENT_CLIENT_SECRET: !Ref Auth0ManagementClientSecret
+          AUTH0_ADMIN_ROLE_ID: !Ref Auth0AdminRoleId
+          AUTH0_TEAM_MANAGER_ROLE_ID: !Ref Auth0TeamManagerRoleId
+          AUTH0_USER_ROLE_ID: !Ref Auth0UserRoleId
+      Events:
+        CreateUser:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/users
+            Method: POST
+            Auth:
+              Authorizer: Auth0Authorizer
+              AuthorizationScopes:
+                - maijin-defi-challenge:admin
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/users/create-user.ts
+
+  GetUsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-player-management-get-users
+      CodeUri: src/
+      Handler: handlers/users/get-users.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
+      Events:
+        GetUsers:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/users
+            Method: GET
+            Auth:
+              Authorizer: Auth0Authorizer
+              AuthorizationScopes:
+                - maijin-defi-challenge:admin
+                - maijin-defi-challenge:team-manager
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/users/get-users.ts
+
+  GetUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-player-management-get-user
+      CodeUri: src/
+      Handler: handlers/users/get-user.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
+      Events:
+        GetUser:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/users/{id}
+            Method: GET
+            Auth:
+              Authorizer: Auth0Authorizer
+              AuthorizationScopes:
+                - maijin-defi-challenge:admin
+                - maijin-defi-challenge:team-manager
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/users/get-user.ts
+
+  UpdateUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-player-management-update-user
+      CodeUri: src/
+      Handler: handlers/users/update-user.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
+          AUTH0_DOMAIN: !Sub "${Auth0IssuerUrl}"
+          AUTH0_AUDIENCE: !Ref Auth0Audience
+          AUTH0_MANAGEMENT_CLIENT_ID: !Ref Auth0ManagementClientId
+          AUTH0_MANAGEMENT_CLIENT_SECRET: !Ref Auth0ManagementClientSecret
+          AUTH0_ADMIN_ROLE_ID: !Ref Auth0AdminRoleId
+          AUTH0_TEAM_MANAGER_ROLE_ID: !Ref Auth0TeamManagerRoleId
+          AUTH0_USER_ROLE_ID: !Ref Auth0UserRoleId
+      Events:
+        UpdateUser:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/users/{id}
+            Method: PUT
+            Auth:
+              Authorizer: Auth0Authorizer
+              AuthorizationScopes:
+                - maijin-defi-challenge:admin
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/users/update-user.ts
+
+  DeleteUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-player-management-delete-user
+      CodeUri: src/
+      Handler: handlers/users/delete-user.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
+      Events:
+        DeleteUser:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/users/{id}
+            Method: DELETE
+            Auth:
+              Authorizer: Auth0Authorizer
+              AuthorizationScopes:
+                - maijin-defi-challenge:admin
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/users/delete-user.ts
+
+  SyncAuth0PermissionsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-player-management-sync-auth0-permissions
+      CodeUri: src/
+      Handler: handlers/users/sync-auth0-permissions.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Timeout: 300  # 5 minutes for batch processing
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
+          AUTH0_DOMAIN: !Sub "${Auth0IssuerUrl}"
+          AUTH0_AUDIENCE: !Ref Auth0Audience
+          AUTH0_MANAGEMENT_CLIENT_ID: !Ref Auth0ManagementClientId
+          AUTH0_MANAGEMENT_CLIENT_SECRET: !Ref Auth0ManagementClientSecret
+          AUTH0_ADMIN_ROLE_ID: !Ref Auth0AdminRoleId
+          AUTH0_TEAM_MANAGER_ROLE_ID: !Ref Auth0TeamManagerRoleId
+          AUTH0_USER_ROLE_ID: !Ref Auth0UserRoleId
+      Events:
+        SyncAuth0Permissions:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/users/sync-auth0-permissions
+            Method: POST
+            Auth:
+              Authorizer: Auth0Authorizer
+              AuthorizationScopes:
+                - maijin-defi-challenge:admin
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/users/sync-auth0-permissions.ts
+
+
+  # Chat Management Functions
+  CreateChatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-player-management-create-chat
+      CodeUri: src/
+      Handler: handlers/chat/create-chat.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Timeout: 30
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
+          BEDROCK_KNOWLEDGE_BASE_ID: XJSHBJYNTF
+      Events:
+        CreateChat:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/chats
+            Method: POST
+            Auth:
+              Authorizer: Auth0Authorizer
+              AuthorizationScopes:
+                - maijin-defi-challenge:admin
+                - maijin-defi-challenge:team-manager
+                - maijin-defi-challenge:user
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/chat/create-chat.ts
+
+  GetChatsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-player-management-get-chats
+      CodeUri: src/
+      Handler: handlers/chat/get-chats.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
+          BEDROCK_KNOWLEDGE_BASE_ID: XJSHBJYNTF
+      Events:
+        GetChats:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/chats
+            Method: GET
+            Auth:
+              Authorizer: Auth0Authorizer
+              AuthorizationScopes:
+                - maijin-defi-challenge:admin
+                - maijin-defi-challenge:team-manager
+                - maijin-defi-challenge:user
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/chat/get-chats.ts
+
+  SendMessageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-player-management-send-message
+      CodeUri: src/
+      Handler: handlers/chat/send-message.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Timeout: 60
+      MemorySize: 1024
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
+          BEDROCK_KNOWLEDGE_BASE_ID: XJSHBJYNTF
+      Events:
+        SendMessage:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/chats/{chatId}/messages
+            Method: POST
+            Auth:
+              Authorizer: Auth0Authorizer
+              AuthorizationScopes:
+                - maijin-defi-challenge:admin
+                - maijin-defi-challenge:team-manager
+                - maijin-defi-challenge:user
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/chat/send-message.ts
+
+  GetChatHistoryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-player-management-get-chat-history
+      CodeUri: src/
+      Handler: handlers/chat/get-chat-history.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
+          BEDROCK_KNOWLEDGE_BASE_ID: XJSHBJYNTF
+      Events:
+        GetChatHistory:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/chats/{chatId}/messages
+            Method: GET
+            Auth:
+              Authorizer: Auth0Authorizer
+              AuthorizationScopes:
+                - maijin-defi-challenge:admin
+                - maijin-defi-challenge:team-manager
+                - maijin-defi-challenge:user
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/chat/get-chat-history.ts
+
+  UpdateChatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-player-management-update-chat
+      CodeUri: src/
+      Handler: handlers/chat/update-chat.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
+          BEDROCK_KNOWLEDGE_BASE_ID: XJSHBJYNTF
+      Events:
+        UpdateChat:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/chats/{chatId}
+            Method: PUT
+            Auth:
+              Authorizer: Auth0Authorizer
+              AuthorizationScopes:
+                - maijin-defi-challenge:admin
+                - maijin-defi-challenge:team-manager
+                - maijin-defi-challenge:user
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/chat/update-chat.ts
+
+  DeleteChatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-player-management-delete-chat
+      CodeUri: src/
+      Handler: handlers/chat/delete-chat.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
+          BEDROCK_KNOWLEDGE_BASE_ID: XJSHBJYNTF
+      Events:
+        DeleteChat:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/chats/{chatId}
+            Method: DELETE
+            Auth:
+              Authorizer: Auth0Authorizer
+              AuthorizationScopes:
+                - maijin-defi-challenge:admin
+                - maijin-defi-challenge:team-manager
+                - maijin-defi-challenge:user
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/chat/delete-chat.ts
+
+  # Log Groups
+  CreateUserFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${Environment}-player-management-create-user
+      RetentionInDays: 14
+
+  GetUsersFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${Environment}-player-management-get-users
+      RetentionInDays: 14
+
+  # Chat Management Log Groups
+  CreateChatFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${Environment}-player-management-create-chat
+      RetentionInDays: 14
+
+  GetChatsFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${Environment}-player-management-get-chats
+      RetentionInDays: 14
+
+  SendMessageFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${Environment}-player-management-send-message
+      RetentionInDays: 14
+
+  GetChatHistoryFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${Environment}-player-management-get-chat-history
+      RetentionInDays: 14
+
+  UpdateChatFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${Environment}-player-management-update-chat
+      RetentionInDays: 14
+
+  DeleteChatFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${Environment}-player-management-delete-chat
+      RetentionInDays: 14
+
+Outputs:
+  CloudFrontDomainName:
+    Description: CloudFront domain name
+    Value: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+  S3BucketName:
+    Description: S3 bucket name for documents
+    Value: !Ref PlayerManagementDocumentsBucket
+  ApiUrl:
+    Description: API Gateway URL
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"

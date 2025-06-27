@@ -1,0 +1,122 @@
+name: FRONT - Deployment
+run-name: "${{ github.event.inputs.environment }} - @${{ github.actor }} - Deployment"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        description: Environment to deploy
+        default: 'staging'
+        options:
+        - dev
+        - staging
+        - preprod
+        - prod
+
+jobs:
+  deployment:
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write # required to use OIDC authentication
+      contents: read # required to checkout the code from the repo
+
+    steps:
+      - name: GLOBAL - Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@uci-tech'
+
+      - name: Install Yarn
+        run: npm install -g yarn
+
+      - name: Set vars to env
+        env:
+          VARS_JSON: ${{ toJSON(vars) }}
+        run: |
+          echo "$VARS_JSON" | jq -r 'keys[] as $k | "\($k)=\(.[$k])"' >> $GITHUB_ENV
+
+      - name: GLOBAL - Security - Secret Scanning
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --results=verified,unknown
+
+      - name: GLOBAL - Configure aws credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOYMENT_ROLE_ARN }}
+          role-duration-seconds: 3600
+          aws-region: ${{ secrets.GLOBAL_AWS_REGION }}
+
+      - name: INFRA - Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.6.0
+
+      - name: INFRA - OpenTofu Init
+        working-directory: infra
+        id: init
+        run: tofu init -backend-config="bucket=${{ secrets.AWS_DEPLOYMENT_BUCKET }}" -backend-config="key=${{ inputs.environment }}-${{ github.event.repository.name }}" -backend-config="region=${{ secrets.GLOBAL_AWS_REGION }}"
+
+      - name: INFRA - OpenTofu Validate
+        working-directory: infra
+        id: validate
+        run: tofu validate -no-color
+
+      - name: INFRA - OpenTofu Plan
+        id: plan
+        working-directory: infra
+        run: tofu plan -out workspace.plan
+
+      - name: INFRA - OpenTofu Apply
+        working-directory: infra
+        run: tofu apply workspace.plan
+
+      - name: FRONT - Install dependencies
+        working-directory: front
+        run: yarn install
+
+      - name: FRONT - Retrieve FROM SSM Parameter For "API BACK"
+        id: ssm_api_hotels
+        run: |
+          PARAMETER_VALUE=$(aws ssm get-parameter --name "/${{ inputs.environment }}/uci-hotels/api_url" --with-decryption --query "Parameter.Value" --output text)
+          echo "::set-output name=parameter_value::$PARAMETER_VALUE"
+
+      - name: FRONT - Create .env file
+        working-directory: front
+        run: |
+          echo "AUTH0_CLIENT_ID=${{ vars.AUTH0_CLIENT_ID }}" > .env
+          echo "AUTH0_DOMAIN=${{ vars.AUTH0_DOMAIN }}" >> .env
+          echo "API_COMMISSAIRE_PORTAL=${{ steps.ssm_api_commissaire_portal.outputs.parameter_value }}" >> .env
+          echo "CLARITY_ID=${{ vars.CLARITY_ID }}" >> .env
+
+      - name: FRONT - Build Quasar project
+        working-directory: front
+        run: npx quasar build
+
+      - name: FRONT - Deploy to S3 Switzerland
+        working-directory: front
+        run: |
+          aws s3 sync dist/spa s3://${{ inputs.environment }}-uci-dataride-v2-application-front-eu-central-2 --delete
+
+      - name: FRONT - Deploy to S3 Ireland
+        working-directory: front
+        run: |
+          aws s3 sync dist/spa s3://${{ inputs.environment }}-uci-dataride-v2-application-front-eu-west-1 --delete
+
+      - name: FRONT - Retrieve Cloudfront ID FROM SSM Parameter
+        id: ssm
+        run: |
+          PARAMETER_VALUE=$(aws ssm get-parameter --name "/${{ inputs.environment }}/uci-dataride-v2-front/cloudfront_id" --with-decryption --query "Parameter.Value" --output text)
+          echo "::set-output name=parameter_value::$PARAMETER_VALUE"
+
+      - name: FRONT - Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation --distribution-id ${{ steps.ssm.outputs.parameter_value }} --paths "/*"

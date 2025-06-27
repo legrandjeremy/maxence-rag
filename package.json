@@ -1,0 +1,9 @@
+{
+  "name": "maijin-defi-challenge",
+  "version": "1.0.0",
+  "license": "MIT",
+  "scripts": {
+    "dev": "docker-compose up -d && cd back && sam build && sam local start-api",
+    "start": "nodemon --watch hello-world --ext js,ts,json --exec 'sam local start-api --template template.yaml --debug'"
+  }
+}
