@@ -32,17 +32,23 @@ export class Auth0ManagementService {
     const domain = process.env.AUTH0_DOMAIN;
     const clientId = process.env.AUTH0_MANAGEMENT_CLIENT_ID;
     const clientSecret = process.env.AUTH0_MANAGEMENT_CLIENT_SECRET;
-    this.audience = process.env.AUTH0_AUDIENCE || 'https://defi.maijin';
+    this.audience = process.env.AUTH0_AUDIENCE || 'http://maxence.chat';
 
     if (!domain || !clientId || !clientSecret) {
       throw new Error('Auth0 Management API credentials are not properly configured');
     }
 
+    // Normalize domain to plain hostname (no protocol, no trailing slash)
+    let normalizedDomain = domain.trim();
+    if (normalizedDomain.startsWith('http://') || normalizedDomain.startsWith('https://')) {
+      normalizedDomain = normalizedDomain.replace(/^https?:\/\//, '');
+    }
+    normalizedDomain = normalizedDomain.replace(/\/$/, '');
+
     this.client = new ManagementClient({
-      domain,
+      domain: normalizedDomain,
       clientId,
-      clientSecret,
-      scope: 'read:users update:users create:users read:roles update:roles assign:roles read:role_members'
+      clientSecret
     });
   }
 
@@ -51,8 +57,12 @@ export class Auth0ManagementService {
    */
   async getUserByEmail(email: string): Promise<Auth0UserData | null> {
     try {
-      const users = await this.client.users.getByEmail({ email });
-      return users.length > 0 ? users[0] as Auth0UserData : null;
+      const response = await this.client.users.getAll({
+        q: `email:"${email}"`,
+        search_engine: 'v3'
+      });
+      const users = response.data || response;
+      return Array.isArray(users) && users.length > 0 ? users[0] as Auth0UserData : null;
     } catch (error) {
       console.error('Error getting Auth0 user by email:', error);
       return null;
@@ -64,7 +74,8 @@ export class Auth0ManagementService {
    */
   async getUserById(userId: string): Promise<Auth0UserData | null> {
     try {
-      const user = await this.client.users.get({ id: userId });
+      const response = await this.client.users.get({ id: userId });
+      const user = response.data || response;
       return user as Auth0UserData;
     } catch (error) {
       console.error('Error getting Auth0 user by ID:', error);
@@ -87,8 +98,9 @@ export class Auth0ManagementService {
         verify_email: true
       };
 
-      const user = await this.client.users.create(userData);
-      return user as Auth0UserData;
+      const response = await this.client.users.create(userData);
+      const user = response.data || response;
+      return user as unknown as Auth0UserData;
     } catch (error) {
       console.error('Error creating Auth0 user:', error);
       return null;
@@ -116,8 +128,9 @@ export class Auth0ManagementService {
    */
   async getRoles(): Promise<Auth0Role[]> {
     try {
-      const roles = await this.client.roles.getAll();
-      return roles as Auth0Role[];
+      const response = await this.client.roles.getAll();
+      const roles = response.data || response;
+      return roles as unknown as Auth0Role[];
     } catch (error) {
       console.error('Error getting Auth0 roles:', error);
       return [];
@@ -145,7 +158,7 @@ export class Auth0ManagementService {
    */
   async removeRolesFromUser(userId: string, roleIds: string[]): Promise<boolean> {
     try {
-      await this.client.users.removeRoles(
+      await this.client.users.deleteRoles(
         { id: userId },
         { roles: roleIds }
       );
@@ -162,7 +175,7 @@ export class Auth0ManagementService {
   async getUserRoles(userId: string): Promise<Auth0Role[]> {
     try {
       const roles = await this.client.users.getRoles({ id: userId });
-      return roles as Auth0Role[];
+      return roles as unknown as Auth0Role[];
     } catch (error) {
       console.error('Error getting Auth0 user roles:', error);
       return [];
@@ -175,7 +188,7 @@ export class Auth0ManagementService {
   async getRolePermissions(roleId: string): Promise<Auth0Permission[]> {
     try {
       const permissions = await this.client.roles.getPermissions({ id: roleId });
-      return permissions as Auth0Permission[];
+      return permissions as unknown as Auth0Permission[];
     } catch (error) {
       console.error('Error getting Auth0 role permissions:', error);
       return [];

@@ -1,10 +1,2 @@
 variable "ENVIRONMENT" {
 }
-
-variable "CLOUDFRONT_PUBLIC_DOMAIN" {
-    
-}
-
-variable "UCI_GLOBAL_AWS_DEPLOYMENT_ROLE_ARN_ROUTE53" {
-  
-}

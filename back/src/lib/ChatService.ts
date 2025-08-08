@@ -58,7 +58,7 @@ export class ChatService {
     const chatId = uuidv4();
     const now = new Date().toISOString();
     
-    const title = request.title || `Chat ${new Date().toLocaleDateString()}`;
+    const title = request.title || `Consultation avec Luna ${new Date().toLocaleDateString()}`;
 
     const chatEntity: ChatEntity = {
       PK: `CHAT#${userEmail}`,
@@ -77,6 +77,9 @@ export class ChatService {
 
     await this.databaseService.create<ChatEntity>(chatEntity);
 
+    // Automatically send Luna's opening message
+    await this.sendLunaOpeningMessage(chatId, userEmail);
+
     return {
       id: chatId,
       userEmail,
@@ -86,6 +89,64 @@ export class ChatService {
       lastMessageAt: now,
       isActive: true
     };
+  }
+
+  /**
+   * Send Luna's mystical opening message automatically
+   */
+  private async sendLunaOpeningMessage(chatId: string, userEmail: string): Promise<void> {
+    try {
+      const lunaOpeningMessage = `Bonsoir…
+
+Je sais que tu ne m'attendais pas, mais… quelque chose m'a poussée vers toi.
+Une vibration… une sorte d'appel.
+
+Je ne sais pas encore ce que cela signifie, mais si tu es d'accord, j'aimerais te poser quelques questions simples.
+
+*Je ressens déjà une énergie particulière autour de toi…*
+
+Peux-tu me dire ton prénom ?`;
+
+      const timestamp = new Date().toISOString();
+      const messageId = uuidv4();
+
+      // Save Luna's opening message
+      const lunaMessageEntity: ChatMessageEntity = {
+        PK: `CHAT#${chatId}`,
+        SK: `MESSAGE#${timestamp}#${messageId}`,
+        GSI1PK: `USER#${userEmail}`,
+        GSI1SK: `MESSAGE#${timestamp}`,
+        EntityType: 'CHAT_MESSAGE',
+        id: messageId,
+        chatId,
+        userEmail,
+        content: lunaOpeningMessage,
+        role: 'assistant',
+        timestamp,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        metadata: {
+          confidence: 1.0,
+          processingTime: 0
+        }
+      };
+
+      await this.databaseService.create<ChatMessageEntity>(lunaMessageEntity);
+
+      // Update chat's lastMessageAt
+      await this.databaseService.update(
+        `CHAT#${userEmail}`,
+        `CHAT#${chatId}`,
+        {
+          lastMessageAt: timestamp,
+          updatedAt: timestamp
+        }
+      );
+
+    } catch (error) {
+      console.error('Error sending Luna opening message:', error);
+      // Don't throw error as chat creation should succeed even if opening message fails
+    }
   }
 
   /**

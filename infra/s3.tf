@@ -1,6 +1,6 @@
 resource "aws_s3_bucket" "application_front" {
   provider           = aws.infra_eu_central_2
-  bucket             = "${var.ENVIRONMENT}-uci-dataride-v2-application-front-eu-central-2"
+  bucket             = "${var.ENVIRONMENT}-uci-maxence-rag-application-front-eu-central-2"
 }
 
 resource "aws_s3_bucket_policy" "default" {

@@ -89,6 +89,18 @@ jobs:
           PARAMETER_VALUE=$(aws ssm get-parameter --name "/${{ inputs.environment }}/uci-hotels/api_url" --with-decryption --query "Parameter.Value" --output text)
           echo "::set-output name=parameter_value::$PARAMETER_VALUE"
 
+      - name: FRONT - Retrieve CloudFront Domain FROM SSM Parameter
+        id: ssm_cloudfront_domain
+        run: |
+          PARAMETER_VALUE=$(aws ssm get-parameter --name "/${{ inputs.environment }}/luna-front/cloudfront_domain" --with-decryption --query "Parameter.Value" --output text)
+          echo "::set-output name=parameter_value::$PARAMETER_VALUE"
+
+      - name: FRONT - Retrieve API URL FROM SSM Parameter
+        id: ssm_api_url
+        run: |
+          PARAMETER_VALUE=$(aws ssm get-parameter --name "/${{ inputs.environment }}/player-management/api_url" --with-decryption --query "Parameter.Value" --output text)
+          echo "::set-output name=parameter_value::$PARAMETER_VALUE"
+
       - name: FRONT - Create .env file
         working-directory: front
         run: |
@@ -96,6 +108,16 @@ jobs:
           echo "AUTH0_DOMAIN=${{ vars.AUTH0_DOMAIN }}" >> .env
           echo "API_COMMISSAIRE_PORTAL=${{ steps.ssm_api_commissaire_portal.outputs.parameter_value }}" >> .env
           echo "CLARITY_ID=${{ vars.CLARITY_ID }}" >> .env
+
+      - name: FRONT - Generate Welcome Page
+        working-directory: front
+        run: |
+          # Replace placeholders with actual values
+          sed -e "s|CLOUDFRONT_DOMAIN_PLACEHOLDER|https://${{ steps.ssm_cloudfront_domain.outputs.parameter_value }}|g" \
+              -e "s|API_BASE_URL_PLACEHOLDER|${{ steps.ssm_api_url.outputs.parameter_value }}|g" \
+              public/welcome-template.html > public/welcome.html
+          echo "Generated welcome page with CloudFront domain: ${{ steps.ssm_cloudfront_domain.outputs.parameter_value }}"
+          echo "Generated welcome page with API URL: ${{ steps.ssm_api_url.outputs.parameter_value }}"
 
       - name: FRONT - Build Quasar project
         working-directory: front

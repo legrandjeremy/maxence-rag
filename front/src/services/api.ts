@@ -10,9 +10,9 @@ interface ApiConfig {
 class ApiService {
   private client: AxiosInstance
 
-  static readonly SCOPE_ADMIN = 'maijin-defi-challenge:admin'
-  static readonly SCOPE_USER = 'maijin-defi-challenge:user'
-  static readonly SCOPE_MANAGER = 'maijin-defi-challenge:team-manager'
+  static readonly SCOPE_ADMIN = 'maxence-rag:admin'
+  static readonly SCOPE_USER = 'maxence-rag:user'
+  static readonly SCOPE_MANAGER = 'maxence-rag:team-manager'
   static readonly SCOPES = [this.SCOPE_ADMIN, this.SCOPE_USER, this.SCOPE_MANAGER]
 
   constructor(config: ApiConfig = {}) {

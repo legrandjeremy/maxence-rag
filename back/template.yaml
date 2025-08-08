@@ -18,6 +18,10 @@ Parameters:
   Auth0Audience:
     Type: String
     Default: player-management-api
+  Auth0ClientId:
+    Type: String
+    Description: Auth0 Application Client ID
+    NoEcho: true
   Auth0ManagementClientId:
     Type: String
     Description: Auth0 Management API Client ID
@@ -35,15 +39,16 @@ Parameters:
   Auth0UserRoleId:
     Type: String
     Description: Auth0 Role ID for regular users
-  DynamodbEndpoint:
+  BedrockKnowledgeBaseId:
     Type: String
-    Default: http://host.docker.internal:8000
+    Description: Bedrock Knowledge Base ID
+    Default: XJSHBJYNTF
 
 Globals:
   Function:
     Architectures:
       - x86_64
-    Runtime: nodejs18.x
+    Runtime: nodejs22.x
     CodeUri: .
     Timeout: 30
     MemorySize: 512
@@ -52,7 +57,7 @@ Resources:
   ApiUrlSSMParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub /${Environment}/player-management/api_url
+      Name: !Sub /${Environment}/luna-front/api_url
       Type: String
       Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
       Description: Base URL for the Player Management API
@@ -60,7 +65,7 @@ Resources:
   ApiIdSSMParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub /${Environment}/player-management/api_id
+      Name: !Sub /${Environment}/luna-front/api_id
       Type: String
       Value: !Ref Api
       Description: ID for the Player Management API
@@ -300,6 +305,132 @@ Resources:
           - '*'
         MaxAge: 600
 
+  # Public Functions (No Auth Required)
+  CollectEmailFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-player-management-collect-email
+      CodeUri: src/
+      Handler: handlers/collect-email.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          AUTH0_DOMAIN: !Sub "${Auth0IssuerUrl}"
+          AUTH0_CLIENT_ID: !Ref Auth0ClientId
+          AUTH0_AUDIENCE: !Ref Auth0Audience
+          AUTH0_MANAGEMENT_CLIENT_ID: !Ref Auth0ManagementClientId
+          AUTH0_MANAGEMENT_CLIENT_SECRET: !Ref Auth0ManagementClientSecret
+          FRONTEND_URL: !Sub "https://${PlayerManagementCloudFrontDistribution.DomainName}"
+      Events:
+        CollectEmail:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/collect-email
+            Method: POST
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/collect-email.ts
+
+  # Guest Chat Functions (No Auth Required)
+  CreateGuestChatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-player-management-create-guest-chat
+      CodeUri: src/
+      Handler: handlers/guest-chat/create-guest-chat.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          BEDROCK_KNOWLEDGE_BASE_ID: !Ref BedrockKnowledgeBaseId
+      Events:
+        CreateGuestChat:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/guest-chat
+            Method: POST
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/guest-chat/create-guest-chat.ts
+
+  SendGuestMessageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-player-management-send-guest-message
+      CodeUri: src/
+      Handler: handlers/guest-chat/send-guest-message.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          BEDROCK_KNOWLEDGE_BASE_ID: !Ref BedrockKnowledgeBaseId
+      Events:
+        SendGuestMessage:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/guest-chat/{chatId}/messages
+            Method: POST
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/guest-chat/send-guest-message.ts
+
+  GetGuestChatHistoryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-player-management-get-guest-chat-history
+      CodeUri: src/
+      Handler: handlers/guest-chat/get-guest-chat-history.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+      Events:
+        GetGuestChatHistory:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/guest-chat/{chatId}/history
+            Method: GET
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/guest-chat/get-guest-chat-history.ts
+
   # User Management Functions
   CreateUserFunction:
     Type: AWS::Serverless::Function
@@ -312,7 +443,6 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
-          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
           AUTH0_DOMAIN: !Sub "${Auth0IssuerUrl}"
           AUTH0_AUDIENCE: !Ref Auth0Audience
           AUTH0_MANAGEMENT_CLIENT_ID: !Ref Auth0ManagementClientId
@@ -330,7 +460,7 @@ Resources:
             Auth:
               Authorizer: Auth0Authorizer
               AuthorizationScopes:
-                - maijin-defi-challenge:admin
+                - maxence-rag:admin
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -351,7 +481,6 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
-          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
       Events:
         GetUsers:
           Type: HttpApi
@@ -362,8 +491,8 @@ Resources:
             Auth:
               Authorizer: Auth0Authorizer
               AuthorizationScopes:
-                - maijin-defi-challenge:admin
-                - maijin-defi-challenge:team-manager
+                - maxence-rag:admin
+                - maxence-rag:team-manager
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -384,7 +513,6 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
-          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
       Events:
         GetUser:
           Type: HttpApi
@@ -395,8 +523,8 @@ Resources:
             Auth:
               Authorizer: Auth0Authorizer
               AuthorizationScopes:
-                - maijin-defi-challenge:admin
-                - maijin-defi-challenge:team-manager
+                - maxence-rag:admin
+                - maxence-rag:team-manager
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -417,7 +545,6 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
-          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
           AUTH0_DOMAIN: !Sub "${Auth0IssuerUrl}"
           AUTH0_AUDIENCE: !Ref Auth0Audience
           AUTH0_MANAGEMENT_CLIENT_ID: !Ref Auth0ManagementClientId
@@ -435,7 +562,7 @@ Resources:
             Auth:
               Authorizer: Auth0Authorizer
               AuthorizationScopes:
-                - maijin-defi-challenge:admin
+                - maxence-rag:admin
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -456,7 +583,6 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
-          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
       Events:
         DeleteUser:
           Type: HttpApi
@@ -467,7 +593,7 @@ Resources:
             Auth:
               Authorizer: Auth0Authorizer
               AuthorizationScopes:
-                - maijin-defi-challenge:admin
+                - maxence-rag:admin
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -476,47 +602,6 @@ Resources:
         Sourcemap: true
         EntryPoints:
           - handlers/users/delete-user.ts
-
-  SyncAuth0PermissionsFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub ${Environment}-player-management-sync-auth0-permissions
-      CodeUri: src/
-      Handler: handlers/users/sync-auth0-permissions.handler
-      Role: !GetAtt PlayerManagementIamRole.Arn
-      Timeout: 300  # 5 minutes for batch processing
-      Environment:
-        Variables:
-          ENVIRONMENT: !Ref Environment
-          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
-          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
-          AUTH0_DOMAIN: !Sub "${Auth0IssuerUrl}"
-          AUTH0_AUDIENCE: !Ref Auth0Audience
-          AUTH0_MANAGEMENT_CLIENT_ID: !Ref Auth0ManagementClientId
-          AUTH0_MANAGEMENT_CLIENT_SECRET: !Ref Auth0ManagementClientSecret
-          AUTH0_ADMIN_ROLE_ID: !Ref Auth0AdminRoleId
-          AUTH0_TEAM_MANAGER_ROLE_ID: !Ref Auth0TeamManagerRoleId
-          AUTH0_USER_ROLE_ID: !Ref Auth0UserRoleId
-      Events:
-        SyncAuth0Permissions:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref Api
-            Path: /api/users/sync-auth0-permissions
-            Method: POST
-            Auth:
-              Authorizer: Auth0Authorizer
-              AuthorizationScopes:
-                - maijin-defi-challenge:admin
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2022
-        Sourcemap: true
-        EntryPoints:
-          - handlers/users/sync-auth0-permissions.ts
-
 
   # Chat Management Functions
   CreateChatFunction:
@@ -531,7 +616,6 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
-          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
           BEDROCK_KNOWLEDGE_BASE_ID: XJSHBJYNTF
       Events:
         CreateChat:
@@ -543,9 +627,9 @@ Resources:
             Auth:
               Authorizer: Auth0Authorizer
               AuthorizationScopes:
-                - maijin-defi-challenge:admin
-                - maijin-defi-challenge:team-manager
-                - maijin-defi-challenge:user
+                - maxence-rag:admin
+                - maxence-rag:team-manager
+                - maxence-rag:user
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -566,7 +650,6 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
-          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
           BEDROCK_KNOWLEDGE_BASE_ID: XJSHBJYNTF
       Events:
         GetChats:
@@ -578,9 +661,9 @@ Resources:
             Auth:
               Authorizer: Auth0Authorizer
               AuthorizationScopes:
-                - maijin-defi-challenge:admin
-                - maijin-defi-challenge:team-manager
-                - maijin-defi-challenge:user
+                - maxence-rag:admin
+                - maxence-rag:team-manager
+                - maxence-rag:user
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -603,7 +686,6 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
-          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
           BEDROCK_KNOWLEDGE_BASE_ID: XJSHBJYNTF
       Events:
         SendMessage:
@@ -615,9 +697,9 @@ Resources:
             Auth:
               Authorizer: Auth0Authorizer
               AuthorizationScopes:
-                - maijin-defi-challenge:admin
-                - maijin-defi-challenge:team-manager
-                - maijin-defi-challenge:user
+                - maxence-rag:admin
+                - maxence-rag:team-manager
+                - maxence-rag:user
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -638,7 +720,6 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
-          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
           BEDROCK_KNOWLEDGE_BASE_ID: XJSHBJYNTF
       Events:
         GetChatHistory:
@@ -650,9 +731,9 @@ Resources:
             Auth:
               Authorizer: Auth0Authorizer
               AuthorizationScopes:
-                - maijin-defi-challenge:admin
-                - maijin-defi-challenge:team-manager
-                - maijin-defi-challenge:user
+                - maxence-rag:admin
+                - maxence-rag:team-manager
+                - maxence-rag:user
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -673,7 +754,6 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
-          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
           BEDROCK_KNOWLEDGE_BASE_ID: XJSHBJYNTF
       Events:
         UpdateChat:
@@ -685,9 +765,9 @@ Resources:
             Auth:
               Authorizer: Auth0Authorizer
               AuthorizationScopes:
-                - maijin-defi-challenge:admin
-                - maijin-defi-challenge:team-manager
-                - maijin-defi-challenge:user
+                - maxence-rag:admin
+                - maxence-rag:team-manager
+                - maxence-rag:user
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -708,7 +788,6 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
-          DYNAMODB_ENDPOINT: !Ref DynamodbEndpoint
           BEDROCK_KNOWLEDGE_BASE_ID: XJSHBJYNTF
       Events:
         DeleteChat:
@@ -720,9 +799,9 @@ Resources:
             Auth:
               Authorizer: Auth0Authorizer
               AuthorizationScopes:
-                - maijin-defi-challenge:admin
-                - maijin-defi-challenge:team-manager
-                - maijin-defi-challenge:user
+                - maxence-rag:admin
+                - maxence-rag:team-manager
+                - maxence-rag:user
     Metadata:
       BuildMethod: esbuild
       BuildProperties:

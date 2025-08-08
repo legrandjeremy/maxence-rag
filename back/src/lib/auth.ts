@@ -19,7 +19,7 @@ export interface AuthResult {
 // Create singleton instance of Auth0ManagementService
 let auth0ManagementService: Auth0ManagementService | null = null;
 
-const getAuth0ManagementService = (): Auth0ManagementService => {
+export const getAuth0ManagementService = (): Auth0ManagementService => {
   if (!auth0ManagementService) {
     auth0ManagementService = new Auth0ManagementService();
   }
@@ -205,4 +205,4 @@ export const syncAuth0UserPermissions = async (
 /**
  * Export the Auth0ManagementService for direct use
  */
-export { Auth0ManagementService, getAuth0ManagementService }; 
+export { Auth0ManagementService }; 

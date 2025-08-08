@@ -25,7 +25,7 @@
           ref="scrollArea"
           class="full-height q-pa-md"
         >
-          <div v-if="chatStore.isLoadingMessages" class="text-center q-pa-md">
+          <div v-if="guestChatStore.isLoadingMessages" class="text-center q-pa-md">
             <q-spinner size="32px" color="purple-4" />
             <div class="text-caption q-mt-sm luna-text">Connexion aux énergies...</div>
           </div>
@@ -72,8 +72,8 @@
           v-model="messageInput"
           outlined
           :placeholder="inputPlaceholder"
-          :loading="chatStore.isSendingMessage"
-          :disable="chatStore.isSendingMessage"
+          :loading="guestChatStore.isSendingMessage"
+          :disable="guestChatStore.isSendingMessage || !guestChatStore.currentChat"
           @keyup.enter="sendMessage"
           hide-bottom-space
           class="luna-input"
@@ -85,7 +85,7 @@
               round
               icon="send"
               size="md"
-              :disable="!messageInput.trim() || chatStore.isSendingMessage"
+              :disable="!messageInput.trim() || guestChatStore.isSendingMessage || !guestChatStore.currentChat"
               @click="sendMessage"
               class="luna-send-btn"
             />
@@ -104,9 +104,16 @@
               :label="action.label"
               @click="sendQuickMessage(action.message)"
               class="mystical-action-btn"
-              :disable="chatStore.isSendingMessage"
+              :disable="guestChatStore.isSendingMessage || !guestChatStore.currentChat"
             />
           </div>
+        </div>
+
+        <!-- Error message display -->
+        <div v-if="guestChatStore.error" class="error-message q-mt-sm">
+          <q-icon name="warning" class="q-mr-sm" />
+          {{ guestChatStore.error }}
+          <q-btn flat dense size="sm" icon="close" @click="guestChatStore.clearError()" />
         </div>
       </q-card-section>
     </q-card>
@@ -115,7 +122,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue';
-import { useChatStore } from 'src/stores/chatStore';
+import { useGuestChatStore } from 'src/stores/guestChatStore';
 import { format } from 'date-fns';
 
 interface MysticalAction {
@@ -126,14 +133,16 @@ interface MysticalAction {
 interface Props {
   showQuickActions?: boolean;
   autoOpen?: boolean;
+  userEmail?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   showQuickActions: true,
-  autoOpen: true
+  autoOpen: true,
+  userEmail: ''
 });
 
-const chatStore = useChatStore();
+const guestChatStore = useGuestChatStore();
 const messageInput = ref('');
 const scrollArea = ref();
 
@@ -146,7 +155,7 @@ const mysticalActions: MysticalAction[] = [
 
 // Computed
 const messages = computed(() => {
-  return chatStore.currentMessages.slice(-20); // Show last 20 messages for iframe
+  return guestChatStore.currentMessages.slice(-20); // Show last 20 messages for iframe
 });
 
 const inputPlaceholder = computed(() => {
@@ -164,25 +173,36 @@ const inputPlaceholder = computed(() => {
 
 // Methods
 const initializeChat = async () => {
-  // Try to load existing chats first
-  await chatStore.loadChats();
+  // Get email from URL params or props
+  const urlParams = new URLSearchParams(window.location.search);
+  const emailFromUrl = urlParams.get('email');
+  const email = emailFromUrl || props.userEmail || localStorage.getItem('guestEmail') || '';
   
-  if (chatStore.chats.length > 0) {
-    // Use the most recent chat
-    const mostRecentChat = chatStore.chats[0];
-    if (mostRecentChat) {
-      chatStore.setCurrentChat(mostRecentChat);
-    }
-  } else {
-    // Create a new chat with Luna
-    await chatStore.createChat({ title: 'Consultation avec Luna' });
+  if (!email) {
+    console.error('No email provided for guest chat');
+    guestChatStore.error = 'Email requis pour la consultation';
+    return;
+  }
+
+  // Store email for future use
+  localStorage.setItem('guestEmail', email);
+  
+  // Initialize guest chat
+  const success = await guestChatStore.initializeGuestChat(email);
+  if (!success) {
+    console.error('Failed to initialize guest chat');
   }
 };
 
 const sendMessage = async () => {
-  if (!messageInput.value.trim() || !chatStore.currentChat) return;
+  if (!messageInput.value.trim() || !guestChatStore.currentChat || !guestChatStore.userEmail) return;
 
-  const success = await chatStore.sendMessage(chatStore.currentChat.id, messageInput.value);
+  const success = await guestChatStore.sendMessage(
+    guestChatStore.currentChat.id, 
+    messageInput.value,
+    guestChatStore.userEmail
+  );
+  
   if (success) {
     messageInput.value = '';
     void nextTick(() => {
@@ -192,12 +212,16 @@ const sendMessage = async () => {
 };
 
 const sendQuickMessage = async (message: string) => {
-  if (!chatStore.currentChat) {
+  if (!guestChatStore.currentChat) {
     await initializeChat();
   }
   
-  if (chatStore.currentChat) {
-    await chatStore.sendMessage(chatStore.currentChat.id, message);
+  if (guestChatStore.currentChat && guestChatStore.userEmail) {
+    await guestChatStore.sendMessage(
+      guestChatStore.currentChat.id, 
+      message,
+      guestChatStore.userEmail
+    );
     void nextTick(() => {
       scrollToBottom();
     });
@@ -235,10 +259,20 @@ onMounted(async () => {
 });
 
 // Auto-scroll when new messages arrive
-watch(() => chatStore.currentMessages.length, () => {
+watch(() => guestChatStore.currentMessages.length, () => {
   void nextTick(() => {
     scrollToBottom();
   });
+});
+
+// Listen for email from parent window (for iframe communication)
+window.addEventListener('message', (event) => {
+  if (event.data.type === 'setEmail' && event.data.email) {
+    localStorage.setItem('guestEmail', event.data.email);
+    if (!guestChatStore.currentChat) {
+      void initializeChat();
+    }
+  }
 });
 </script>
 
@@ -457,6 +491,16 @@ watch(() => chatStore.currentMessages.length, () => {
 .mystical-pause {
   display: inline-block;
   width: 10px;
+}
+
+.error-message {
+  background: rgba(244, 67, 54, 0.1);
+  color: #d32f2f;
+  padding: 12px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 // Dark mode support

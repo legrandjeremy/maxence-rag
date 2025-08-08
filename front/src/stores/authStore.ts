@@ -4,9 +4,9 @@ import { type User } from '@auth0/auth0-vue'
 import { type UserMetaData } from '@uci-tech/uci-users'
 
 // Player Management scopes
-const PLAYER_MANAGEMENT_ADMIN_SCOPE = 'maijin-defi-challenge:admin'
-const PLAYER_MANAGEMENT_TEAM_MANAGER_SCOPE = 'maijin-defi-challenge:team-manager'
-const PLAYER_MANAGEMENT_USER_SCOPE = 'maijin-defi-challenge:user'
+const PLAYER_MANAGEMENT_ADMIN_SCOPE = 'maxence-rag:admin'
+const PLAYER_MANAGEMENT_TEAM_MANAGER_SCOPE = 'maxence-rag:team-manager'
+const PLAYER_MANAGEMENT_USER_SCOPE = 'maxence-rag:user'
 
 interface Role {
   role: string

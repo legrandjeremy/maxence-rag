@@ -1,63 +1,36 @@
 import { route } from 'quasar/wrappers'
-import { createRouter, createWebHistory } from 'vue-router'
-import { useAuthStore } from 'src/stores/authStore'
-import { Loading } from 'quasar'
+import {
+  createMemoryHistory,
+  createRouter,
+  createWebHashHistory,
+  createWebHistory,
+} from 'vue-router'
 
-const routes = [
-  {
-    path: '/',
-    component: () => import('layouts/MainLayout.vue'),
-    children: [
-      { path: '', component: () => import('pages/IndexPage.vue') },
-      {
-        path: 'profile',
-        component: () => import('pages/ProfilePage.vue'),
-        meta: { requiresAuth: true }
-      },
-      // Chat Routes
-      {
-        path: 'chat',
-        component: () => import('pages/ChatPage.vue'),
-        meta: { requiresAuth: true }
-      },
-    ],
-  },
-  {
-    path: '/callback',
-    component: () => import('pages/CallbackPage.vue'),
-  }
-]
+import routes from './routes'
 
-export default route(function () {
-  const router = createRouter({
-    history: createWebHistory(),
+/*
+ * If not building with SSR mode, you can
+ * directly export the Router instantiation;
+ *
+ * The function below can be async too; either use
+ * async/await or return a Promise which resolves
+ * with the Router instance.
+ */
+
+export default route(function (/* { store, ssrContext } */) {
+  const createHistory = process.env.SERVER
+    ? createMemoryHistory
+    : (process.env.VUE_ROUTER_MODE === 'history' ? createWebHistory : createWebHashHistory)
+
+  const Router = createRouter({
+    scrollBehavior: () => ({ left: 0, top: 0 }),
     routes,
+
+    // Leave this as is and make changes in quasar.conf.js instead!
+    // quasar.conf.js -> build -> vueRouterMode
+    // quasar.conf.js -> build -> publicPath
+    history: createHistory(process.env.VUE_ROUTER_BASE),
   })
 
-  router.beforeEach(async (to, from, next) => {
-    const authStore = useAuthStore()
-
-    if (!authStore.isReady) {
-      Loading.show({
-        message: 'Authenticating...',
-        customClass: 'loader-bg'
-      })
-
-      await authStore.waitUntilReady() // Wait for auth store to be initialized
-
-      Loading.hide()
-    }
-
-    if (to.meta.requiresAuth && !authStore.isSignedIn) {
-      next('/') // Redirect to login if auth is required
-    } else if (to.meta.requiresPlayerAdmin && !authStore.hasPlayerManagementAdminAccess) {
-      next('/') // Redirect if player admin access is required but not available
-    } else if (to.meta.requiresTeamManager && !authStore.hasPlayerManagementTeamManagerAccess) {
-      next('/') // Redirect if team manager access is required but not available
-    } else {
-      next() // Proceed with navigation
-    }
-  })
-
-  return router
+  return Router
 })

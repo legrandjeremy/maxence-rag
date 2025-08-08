@@ -1,15 +1,8 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb"
-import S3Service from "./S3Service"
-import { DatabaseService } from "./DatabaseService"
 import { UserService } from "./UserService"
-import { CompanyService } from "./CompanyService"
 import { CampaignService } from "./CampaignService"
-import { LessonService } from "./LessonService"
-import { DocumentService } from "./DocumentService"
-import { UserProgressService } from "./UserProgressService"
-import { TeamService } from "./TeamService"
-import { LessonDocumentService } from "./LessonDocumentService"
 import { BedrockService } from "./BedrockService"
+import { DatabaseService } from "./DatabaseService"
 import { ChatService } from "./ChatService"
 import { APIGatewayProxyResult } from 'aws-lambda'
 
@@ -44,19 +37,12 @@ const knowledgeBaseId = process.env.BEDROCK_KNOWLEDGE_BASE_ID || 'XJSHBJYNTF';
 
 // Create services
 const databaseService = new DatabaseService(dynamoClient, tableName);
-const s3Service = new S3Service(s3BucketName, cloudfrontDomain);
 const bedrockService = new BedrockService({
   region: bedrockRegion,
   knowledgeBaseId: knowledgeBaseId
 });
 const userService = new UserService(databaseService);
-const companyService = new CompanyService(databaseService);
 const campaignService = new CampaignService(databaseService);
-const lessonService = new LessonService(databaseService);
-const documentService = new DocumentService(databaseService);
-const userProgressService = new UserProgressService(databaseService);
-const teamService = new TeamService(databaseService);
-const lessonDocumentService = new LessonDocumentService(databaseService);
 const chatService = new ChatService(databaseService, bedrockService);
 
 export const createResponse = (statusCode: number, body: any): APIGatewayProxyResult => {
@@ -79,15 +65,8 @@ export {
     bedrockRegion,
     knowledgeBaseId,
     databaseService,
-    s3Service,
     bedrockService,
     userService,
-    companyService,
     campaignService,
-    lessonService,
-    documentService,
-    userProgressService,
-    teamService,
-    lessonDocumentService,
     chatService
 };

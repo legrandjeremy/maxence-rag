@@ -12,13 +12,22 @@ export interface User {
   auth0UserId: string;
 }
 
+export interface EmailCollectionRequest {
+  email: string;
+}
+
+export interface EmailCollectionResponse {
+  success: boolean;
+  auth0LoginUrl?: string;
+  error?: string;
+}
+
 export interface UserCreateRequest {
   email: string;
   firstName: string;
   lastName: string;
   userType: 'admin' | 'team_manager' | 'user';
   companyId?: string;
-  teamId?: string;
 }
 
 export interface UserUpdateRequest {
@@ -26,7 +35,6 @@ export interface UserUpdateRequest {
   lastName?: string;
   userType?: 'admin' | 'team_manager' | 'user';
   companyId?: string;
-  teamId?: string;
   isActive?: boolean;
 }
 

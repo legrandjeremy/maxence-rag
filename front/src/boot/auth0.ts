@@ -21,7 +21,7 @@ const auth0Client = createAuth0({
   clientId: process.env.AUTH0_CLIENT_ID || '',
   authorizationParams: {
     redirect_uri: window.location.origin + '/callback',
-    audience: 'https://defi.maijin',
+    audience: 'http://maxence.chat',
     scope: mergedScopes.join(' ')
   },
   cacheLocation: 'localstorage'
@@ -32,7 +32,7 @@ export default defineBoot(async ({ app }) => {
   app.use(auth0Client)
 
   Loading.show({
-    message: '... mAIjin Defi - Secure Loading ...',
+    message: '... Chat - Secure Loading ...',
     customClass: 'loader-bg'
   })
 
