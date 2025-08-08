@@ -60,21 +60,6 @@
                 </div>
               </div>
             </div>
-
-            <!-- Typing indicator for Luna while sending -->
-            <div v-if="guestChatStore.isSendingMessage" class="iframe-message message-assistant">
-              <div class="assistant-header q-mb-sm">
-                <q-avatar size="24px" class="luna-avatar-small">
-                  <q-icon name="auto_awesome" />
-                </q-avatar>
-                <span class="luna-name q-ml-sm">Luna</span>
-              </div>
-              <div class="message-bubble-iframe">
-                <div class="message-content-iframe">
-                  <q-spinner-dots color="purple-4" size="24px" />
-                </div>
-              </div>
-            </div>
           </div>
         </q-scroll-area>
       </q-card-section>
