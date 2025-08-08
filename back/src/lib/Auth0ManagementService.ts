@@ -45,8 +45,10 @@ export class Auth0ManagementService {
     }
     normalizedDomain = normalizedDomain.replace(/\/$/, '');
 
+    const managementAudience = `https://${normalizedDomain}/api/v2/`;
     this.client = new ManagementClient({
       domain: normalizedDomain,
+      audience: managementAudience,
       clientId,
       clientSecret
     });
@@ -102,7 +104,10 @@ export class Auth0ManagementService {
       const user = response.data || response;
       return user as unknown as Auth0UserData;
     } catch (error) {
-      console.error('Error creating Auth0 user:', error);
+      const details = (error as any)?.statusCode || (error as any)?.status || undefined;
+      const errMsg = (error as any)?.message || String(error);
+      const payload = (error as any)?.payload || (error as any)?.data || undefined;
+      console.error('Error creating Auth0 user:', { status: details, message: errMsg, payload });
       return null;
     }
   }

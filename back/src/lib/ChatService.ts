@@ -297,6 +297,12 @@ Peux-tu me dire ton prénom ?`;
     const assistantTimestamp = new Date().toISOString();
     const assistantMessageId = uuidv4();
 
+    const assistantMetadata: ChatMessageEntity['metadata'] = {
+      sourceDocuments: bedrockResponse.metadata?.sourceDocuments ?? [],
+      confidence: bedrockResponse.confidence ?? 0,
+      processingTime: Date.now() - now.getTime()
+    };
+
     const assistantMessageEntity: ChatMessageEntity = {
       PK: `CHAT#${chatId}`,
       SK: `MESSAGE#${assistantTimestamp}#${assistantMessageId}`,
@@ -309,11 +315,7 @@ Peux-tu me dire ton prénom ?`;
       content: bedrockResponse.content,
       role: 'assistant',
       timestamp: assistantTimestamp,
-      metadata: {
-        sourceDocuments: bedrockResponse.sourceDocuments,
-        confidence: bedrockResponse.confidence,
-        processingTime: Date.now() - now.getTime()
-      },
+      metadata: assistantMetadata,
       createdAt: assistantTimestamp,
       updatedAt: assistantTimestamp
     };

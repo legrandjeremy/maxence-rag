@@ -262,9 +262,9 @@ Tu ne dois JAMAIS parler d'argent directement. Tu dis :
 
       return {
         content,
-        confidence: ragContext.totalRetrieved > 0 ? 0.9 : 0.7,
+        confidence: ragContext && ragContext.totalRetrieved > 0 ? 0.9 : 0.7,
         metadata: {
-          sourceDocuments: ragContext.documents.map(doc => doc.source),
+          sourceDocuments: (ragContext?.documents || []).map(doc => doc.source),
           processingTime
         }
       };
@@ -446,15 +446,15 @@ Réponds en tant que Luna: [/INST]`;
       const command = new RetrieveCommand(input);
       const response = await this.bedrockAgentClient.send(command);
 
-      const retrievedDocuments = response.retrievalResults?.map(result => ({
+      const documents = (response.retrievalResults || []).map(result => ({
         content: result.content?.text || '',
         source: result.location?.s3Location?.uri || 'Unknown source',
-        score: result.score || 0
-      })) || [];
+        relevanceScore: result.score || 0
+      }));
 
       return {
-        query,
-        retrievedDocuments
+        documents,
+        totalRetrieved: documents.length
       };
 
     } catch (error) {

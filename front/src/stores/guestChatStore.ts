@@ -130,6 +130,19 @@ export const useGuestChatStore = defineStore('guestChat', () => {
   const sendMessage = async (chatId: string, content: string, email: string): Promise<boolean> => {
     if (!content.trim()) return false;
 
+    // Optimistically add user's message
+    const tempId = `temp-${Date.now()}`;
+    const nowIso = new Date().toISOString();
+    const tempUserMessage: GuestChatMessage = {
+      id: tempId,
+      chatId,
+      userEmail: email,
+      content: content.trim(),
+      role: 'user',
+      timestamp: nowIso,
+    };
+    currentMessages.value.push(tempUserMessage);
+
     try {
       isSendingMessage.value = true;
       clearError();
@@ -154,9 +167,17 @@ export const useGuestChatStore = defineStore('guestChat', () => {
 
       const data = await response.json();
       const { userMessage, assistantMessage } = data.data;
-      
-      // Add both messages to current messages
-      currentMessages.value.push(userMessage, assistantMessage);
+
+      // Replace temp user message with the persisted one
+      const idx = currentMessages.value.findIndex(m => m.id === tempId);
+      if (idx !== -1) {
+        currentMessages.value[idx] = userMessage;
+      } else {
+        currentMessages.value.push(userMessage);
+      }
+
+      // Add assistant message
+      currentMessages.value.push(assistantMessage);
 
       // Update the chat's lastMessageAt
       if (currentChat.value) {
@@ -166,6 +187,8 @@ export const useGuestChatStore = defineStore('guestChat', () => {
 
       return true;
     } catch (err) {
+      // Remove temp message on failure
+      currentMessages.value = currentMessages.value.filter(m => m.id !== tempId);
       error.value = err instanceof Error ? err.message : 'Failed to send message';
       console.error('Error sending guest message:', err);
       return false;

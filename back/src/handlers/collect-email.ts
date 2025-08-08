@@ -1,6 +1,6 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { userService } from '../lib/common';
-import { getAuth0ManagementService } from '../lib/auth';
+import Auth0Service from '../lib/Auth0Service';
 import { EmailCollectionRequest, EmailCollectionResponse } from '../models/User';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -77,15 +77,52 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     } else {
       console.log(`Creating new user for email: ${email}`);
       
+      // Initialize Auth0Service with Management API credentials
+      const rawDomain = process.env.AUTH0_DOMAIN || '';
+      const normalizedHost = rawDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      const managementDomain = normalizedHost ? `https://${normalizedHost}/` : '';
+      const managementClientId = process.env.AUTH0_MANAGEMENT_CLIENT_ID || process.env.AUTH0_CLIENT_ID || '';
+      const managementClientSecret = process.env.AUTH0_MANAGEMENT_CLIENT_SECRET || process.env.AUTH0_CLIENT_SECRET || '';
+      const managementAudience = `https://${normalizedHost}/api/v2/`;
+
+      if (!managementDomain || !managementClientId || !managementClientSecret) {
+        console.error('Auth0 Management configuration missing');
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Auth0 Management configuration missing' })
+        };
+      }
+
+      const auth0Service = new Auth0Service(
+        managementDomain,
+        managementClientId,
+        managementClientSecret,
+        managementAudience
+      );
+
       // Check if user exists in Auth0
-      const auth0Service = getAuth0ManagementService();
-      let auth0User = await auth0Service.getUserByEmail(email);
-      
+      const existingAuth0Users = await auth0Service.getUserByEmail(email);
+      let auth0User = Array.isArray(existingAuth0Users) && existingAuth0Users.length > 0
+        ? existingAuth0Users[0]
+        : null;
+
       if (!auth0User) {
-        // Create user in Auth0 with minimal information
+        // Create user in Auth0 with minimal information for DB connection
         console.log(`Creating Auth0 user for: ${email}`);
-        auth0User = await auth0Service.createUser(email, 'User', ''); // Default name
-        
+        const tempPassword = `Tmp${Math.random().toString(36).slice(-8)}!A9`;
+        const emailLocalPart = email.split('@')[0] || 'User';
+        const createPayload = {
+          email,
+          given_name: emailLocalPart,
+          family_name: emailLocalPart,
+          name: emailLocalPart,
+          connection: 'Username-Password-Authentication',
+          password: tempPassword,
+          email_verified: false,
+          verify_email: true
+        };
+        auth0User = await auth0Service.createUser(createPayload);
         if (!auth0User) {
           return {
             statusCode: 500,
@@ -117,44 +154,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       }
     }
 
-    // Generate Auth0 login URL for auto-login
-    const auth0Domain = (process.env.AUTH0_DOMAIN || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
-    const clientId = process.env.AUTH0_CLIENT_ID;
-    const redirectUri = process.env.FRONTEND_URL || 'http://localhost:9000';
-    
-    if (!auth0Domain || !clientId) {
-      console.error('Auth0 configuration missing');
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({ error: 'Authentication configuration error' })
-      };
-    }
-
-    // Create authorization URL for passwordless login
-    const authParams = new URLSearchParams({
-      response_type: 'code',
-      client_id: clientId,
-      redirect_uri: `${redirectUri}/callback`,
-      scope: 'openid profile email',
-      audience: 'http://maxence.chat',
-      login_hint: email // Pre-fill email in login form
-    });
-
-    const auth0LoginUrl = `https://${auth0Domain}/authorize?${authParams.toString()}`;
-
-    const response: EmailCollectionResponse = {
-      success: true,
-      auth0LoginUrl
-    };
-
+    // M2M flow only: do not build user-facing authorize URL. Just confirm/create and return success.
+    const response: EmailCollectionResponse = { success: true } as EmailCollectionResponse;
     console.log(`Email collection successful for: ${email}`);
-
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify(response)
-    };
+    return { statusCode: 200, headers, body: JSON.stringify(response) };
 
   } catch (error) {
     console.error('Error in email collection:', error);
