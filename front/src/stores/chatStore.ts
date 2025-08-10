@@ -55,6 +55,7 @@ export const useChatStore = defineStore('chat', () => {
   const isLoadingChats = ref(false);
   const isLoadingMessages = ref(false);
   const isSendingMessage = ref(false);
+  const isAssistantTyping = ref(false);
   const error = ref<string | null>(null);
 
   // Computed
@@ -173,6 +174,7 @@ export const useChatStore = defineStore('chat', () => {
         timestamp: new Date().toISOString(),
       };
       currentMessages.value.push(placeholderAssistant);
+      isAssistantTyping.value = true;
 
       // Standard POST to get final assistant message
       const response = await api.post<{
@@ -189,6 +191,7 @@ export const useChatStore = defineStore('chat', () => {
       }
       // Gradually reveal assistant content
       await revealAssistantMessageGradually(placeholderAssistant.id, response.data.data.assistantMessage);
+      isAssistantTyping.value = false;
 
       // Update the chat's lastMessageAt
       const chatIndex = chats.value.findIndex(c => c.id === chatId);
@@ -203,6 +206,7 @@ export const useChatStore = defineStore('chat', () => {
 
       return true;
     } catch (err) {
+      isAssistantTyping.value = false;
       if (err instanceof Error && /chat not found|access denied/i.test(err.message)) {
         error.value = "La conversation n'est plus disponible.";
       } else {
@@ -324,6 +328,7 @@ export const useChatStore = defineStore('chat', () => {
     isLoadingMessages,
     isSendingMessage,
     error,
+    isAssistantTyping,
 
     // Computed
     hasChats,

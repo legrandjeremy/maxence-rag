@@ -68,6 +68,15 @@
 
       <!-- Input -->
       <q-card-section class="chat-input-iframe q-pa-md">
+        <!-- Luna is typing indicator -->
+        <div v-if="guestChatStore.isAssistantTyping" class="typing-indicator row items-center q-mb-sm">
+          <q-avatar size="24px" class="luna-avatar-small q-mr-sm">
+            <q-icon name="auto_awesome" />
+          </q-avatar>
+          <span class="text-caption">Luna est en train d'écrire</span>
+          <span class="typing-dots"><span></span><span></span><span></span></span>
+        </div>
+
         <q-input
           v-model="messageInput"
           outlined
@@ -519,6 +528,32 @@ window.addEventListener('message', (event) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.typing-indicator {
+  color: var(--q-text-color-light);
+}
+
+.typing-dots {
+  display: inline-block;
+  margin-left: 6px;
+}
+.typing-dots span {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin: 0 2px;
+  background: var(--q-text-color-light);
+  border-radius: 50%;
+  animation: blink 1.4s infinite both;
+}
+.typing-dots span:nth-child(2) { animation-delay: .2s; }
+.typing-dots span:nth-child(3) { animation-delay: .4s; }
+
+@keyframes blink {
+  0% { opacity: .2; }
+  20% { opacity: 1; }
+  100% { opacity: .2; }
 }
 
 // Dark mode support

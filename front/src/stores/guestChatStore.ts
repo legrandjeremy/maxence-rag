@@ -48,6 +48,7 @@ export const useGuestChatStore = defineStore('guestChat', () => {
   const isLoading = ref(false);
   const isLoadingMessages = ref(false);
   const isSendingMessage = ref(false);
+  const isAssistantTyping = ref(false);
   const error = ref<string | null>(null);
   const userEmail = ref<string>('');
 
@@ -76,6 +77,10 @@ export const useGuestChatStore = defineStore('guestChat', () => {
       currentChat.value = response.data.data as unknown as GuestChat;
       currentMessages.value = [];
       setUserEmail(request.email);
+      // Load opening message from Luna immediately
+      if (currentChat.value?.id) {
+        await loadChatHistory(currentChat.value.id, request.email);
+      }
 
       return true;
     } catch (err) {
@@ -140,6 +145,7 @@ export const useGuestChatStore = defineStore('guestChat', () => {
         timestamp: new Date().toISOString()
       };
       currentMessages.value.push(placeholderAssistant);
+      isAssistantTyping.value = true;
 
       const response = await api.post<{ userMessage: GuestChatMessage; assistantMessage: GuestChatMessage }>(`/api/guest-chat/${chatId}/messages`, request);
       const { userMessage, assistantMessage } = response.data.data as { userMessage: GuestChatMessage; assistantMessage: GuestChatMessage };
@@ -153,6 +159,7 @@ export const useGuestChatStore = defineStore('guestChat', () => {
       }
       // Reveal assistant message progressively
       await revealAssistantMessageGradually(placeholderAssistant.id, assistantMessage);
+      isAssistantTyping.value = false;
 
       // Update the chat's lastMessageAt
       if (currentChat.value) {
@@ -162,6 +169,7 @@ export const useGuestChatStore = defineStore('guestChat', () => {
 
       return true;
     } catch (err) {
+      isAssistantTyping.value = false;
       if (err instanceof Error && /chat not found|access denied/i.test(err.message)) {
         error.value = "La conversation n'est plus disponible.";
       } else {
@@ -228,6 +236,7 @@ export const useGuestChatStore = defineStore('guestChat', () => {
     isLoadingMessages,
     isSendingMessage,
     error,
+    isAssistantTyping,
     userEmail,
     
     // Computed

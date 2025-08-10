@@ -581,20 +581,6 @@
             }
         });
 
-        // Close on escape key
-        document.addEventListener('keydown', function(event) {
-            if (event.key === 'Escape') {
-                closeChat();
-            }
-        });
-
-        // Close on overlay click (not on iframe)
-        document.getElementById('iframeOverlay').addEventListener('click', function(event) {
-            if (event.target === this) {
-                closeChat();
-            }
-        });
-
         // Add smooth transitions
         const overlay = document.getElementById('iframeOverlay');
         overlay.style.transition = 'opacity 0.3s ease';

@@ -27,8 +27,8 @@ const dynamoClient = new DynamoDBClient(options);
 
 // Set up table names and environment variables
 const environment = process.env.ENVIRONMENT || 'dev';
-const tableName = `${environment}-player-management`;
-const s3BucketName = `${environment}-player-management-documents`;
+const tableName = `${environment}-luna-front`;
+const s3BucketName = `${environment}-luna-front-documents`;
 const cloudfrontDomain = process.env.CLOUDFRONT_DOMAIN || 'test-cf-domain.cloudfront.net';
 
 // Bedrock configuration

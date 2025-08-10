@@ -17,7 +17,7 @@ Parameters:
     Default: https://example.auth0.com/
   Auth0Audience:
     Type: String
-    Default: player-management-api
+    Default: luna-front-api
   Auth0ClientId:
     Type: String
     Description: Auth0 Application Client ID
@@ -73,7 +73,7 @@ Resources:
   PlayerManagementDocumentsBucketSSMParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub /${Environment}/player-management/documents_bucket
+      Name: !Sub /${Environment}/luna-front/documents_bucket
       Type: String
       Value: !Ref PlayerManagementDocumentsBucket
       Description: Bucket for the Player Management documents
@@ -81,7 +81,7 @@ Resources:
   PlayerManagementCloudFrontDistributionIdSSMParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub /${Environment}/player-management/cloudfront_distribution_id
+      Name: !Sub /${Environment}/luna-front/cloudfront_distribution_id
       Type: String
       Value: !Ref PlayerManagementCloudFrontDistribution
       Description: ID for the Player Management CloudFront distribution
@@ -89,7 +89,7 @@ Resources:
   PlayerManagementTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub ${Environment}-player-management
+      TableName: !Sub ${Environment}-luna-front
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: PK
@@ -130,7 +130,7 @@ Resources:
   PlayerManagementDocumentsBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub ${Environment}-player-management-documents
+      BucketName: !Sub ${Environment}-luna-front-documents
       VersioningConfiguration:
         Status: Enabled
       CorsConfiguration:
@@ -156,7 +156,7 @@ Resources:
     Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
     Properties:
       CloudFrontOriginAccessIdentityConfig:
-        Comment: !Sub OAI for ${Environment}-player-management
+        Comment: !Sub OAI for ${Environment}-luna-front
 
   PlayerManagementDocumentsBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -214,14 +214,14 @@ Resources:
         PriceClass: PriceClass_All
         ViewerCertificate:
           CloudFrontDefaultCertificate: true
-        Comment: !Sub ${Environment} - player-management
+        Comment: !Sub ${Environment} - luna-front
         DefaultRootObject: index.html
         HttpVersion: http2and3
 
   PlayerManagementIamRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub ${Environment}-player-management
+      RoleName: !Sub ${Environment}-luna-front
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -230,7 +230,7 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: !Sub ${Environment}-player-management
+        - PolicyName: !Sub ${Environment}-luna-front
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -309,7 +309,7 @@ Resources:
   CollectEmailFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${Environment}-player-management-collect-email
+      FunctionName: !Sub ${Environment}-luna-front-collect-email
       CodeUri: src/
       Handler: handlers/collect-email.handler
       Role: !GetAtt PlayerManagementIamRole.Arn
@@ -345,7 +345,7 @@ Resources:
   CreateGuestChatFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${Environment}-player-management-create-guest-chat
+      FunctionName: !Sub ${Environment}-luna-front-create-guest-chat
       CodeUri: src/
       Handler: handlers/guest-chat/create-guest-chat.handler
       Role: !GetAtt PlayerManagementIamRole.Arn
@@ -375,7 +375,7 @@ Resources:
   SendGuestMessageFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${Environment}-player-management-send-guest-message
+      FunctionName: !Sub ${Environment}-luna-front-send-guest-message
       CodeUri: src/
       Handler: handlers/guest-chat/send-guest-message.handler
       Role: !GetAtt PlayerManagementIamRole.Arn
@@ -405,7 +405,7 @@ Resources:
   GetGuestChatHistoryFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${Environment}-player-management-get-guest-chat-history
+      FunctionName: !Sub ${Environment}-luna-front-get-guest-chat-history
       CodeUri: src/
       Handler: handlers/guest-chat/get-guest-chat-history.handler
       Role: !GetAtt PlayerManagementIamRole.Arn
@@ -435,7 +435,7 @@ Resources:
   CreateUserFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${Environment}-player-management-create-user
+      FunctionName: !Sub ${Environment}-luna-front-create-user
       CodeUri: src/
       Handler: handlers/users/create-user.handler
       Role: !GetAtt PlayerManagementIamRole.Arn
@@ -473,7 +473,7 @@ Resources:
   GetUsersFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${Environment}-player-management-get-users
+      FunctionName: !Sub ${Environment}-luna-front-get-users
       CodeUri: src/
       Handler: handlers/users/get-users.handler
       Role: !GetAtt PlayerManagementIamRole.Arn
@@ -505,7 +505,7 @@ Resources:
   GetUserFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${Environment}-player-management-get-user
+      FunctionName: !Sub ${Environment}-luna-front-get-user
       CodeUri: src/
       Handler: handlers/users/get-user.handler
       Role: !GetAtt PlayerManagementIamRole.Arn
@@ -537,7 +537,7 @@ Resources:
   UpdateUserFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${Environment}-player-management-update-user
+      FunctionName: !Sub ${Environment}-luna-front-update-user
       CodeUri: src/
       Handler: handlers/users/update-user.handler
       Role: !GetAtt PlayerManagementIamRole.Arn
@@ -575,7 +575,7 @@ Resources:
   DeleteUserFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${Environment}-player-management-delete-user
+      FunctionName: !Sub ${Environment}-luna-front-delete-user
       CodeUri: src/
       Handler: handlers/users/delete-user.handler
       Role: !GetAtt PlayerManagementIamRole.Arn
@@ -607,7 +607,7 @@ Resources:
   CreateChatFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${Environment}-player-management-create-chat
+      FunctionName: !Sub ${Environment}-luna-front-create-chat
       CodeUri: src/
       Handler: handlers/chat/create-chat.handler
       Role: !GetAtt PlayerManagementIamRole.Arn
@@ -642,7 +642,7 @@ Resources:
   GetChatsFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${Environment}-player-management-get-chats
+      FunctionName: !Sub ${Environment}-luna-front-get-chats
       CodeUri: src/
       Handler: handlers/chat/get-chats.handler
       Role: !GetAtt PlayerManagementIamRole.Arn
@@ -676,7 +676,7 @@ Resources:
   SendMessageFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${Environment}-player-management-send-message
+      FunctionName: !Sub ${Environment}-luna-front-send-message
       CodeUri: src/
       Handler: handlers/chat/send-message.handler
       Role: !GetAtt PlayerManagementIamRole.Arn
@@ -712,7 +712,7 @@ Resources:
   GetChatHistoryFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${Environment}-player-management-get-chat-history
+      FunctionName: !Sub ${Environment}-luna-front-get-chat-history
       CodeUri: src/
       Handler: handlers/chat/get-chat-history.handler
       Role: !GetAtt PlayerManagementIamRole.Arn
@@ -746,7 +746,7 @@ Resources:
   UpdateChatFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${Environment}-player-management-update-chat
+      FunctionName: !Sub ${Environment}-luna-front-update-chat
       CodeUri: src/
       Handler: handlers/chat/update-chat.handler
       Role: !GetAtt PlayerManagementIamRole.Arn
@@ -780,7 +780,7 @@ Resources:
   DeleteChatFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${Environment}-player-management-delete-chat
+      FunctionName: !Sub ${Environment}-luna-front-delete-chat
       CodeUri: src/
       Handler: handlers/chat/delete-chat.handler
       Role: !GetAtt PlayerManagementIamRole.Arn
@@ -815,50 +815,50 @@ Resources:
   CreateUserFunctionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub /aws/lambda/${Environment}-player-management-create-user
+      LogGroupName: !Sub /aws/lambda/${Environment}-luna-front-create-user
       RetentionInDays: 14
 
   GetUsersFunctionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub /aws/lambda/${Environment}-player-management-get-users
+      LogGroupName: !Sub /aws/lambda/${Environment}-luna-front-get-users
       RetentionInDays: 14
 
   # Chat Management Log Groups
   CreateChatFunctionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub /aws/lambda/${Environment}-player-management-create-chat
+      LogGroupName: !Sub /aws/lambda/${Environment}-luna-front-create-chat
       RetentionInDays: 14
 
   GetChatsFunctionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub /aws/lambda/${Environment}-player-management-get-chats
+      LogGroupName: !Sub /aws/lambda/${Environment}-luna-front-get-chats
       RetentionInDays: 14
 
   SendMessageFunctionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub /aws/lambda/${Environment}-player-management-send-message
+      LogGroupName: !Sub /aws/lambda/${Environment}-luna-front-send-message
       RetentionInDays: 14
 
   GetChatHistoryFunctionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub /aws/lambda/${Environment}-player-management-get-chat-history
+      LogGroupName: !Sub /aws/lambda/${Environment}-luna-front-get-chat-history
       RetentionInDays: 14
 
   UpdateChatFunctionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub /aws/lambda/${Environment}-player-management-update-chat
+      LogGroupName: !Sub /aws/lambda/${Environment}-luna-front-update-chat
       RetentionInDays: 14
 
   DeleteChatFunctionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub /aws/lambda/${Environment}-player-management-delete-chat
+      LogGroupName: !Sub /aws/lambda/${Environment}-luna-front-delete-chat
       RetentionInDays: 14
 
 Outputs:
