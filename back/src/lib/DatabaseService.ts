@@ -61,7 +61,8 @@ export class DatabaseService {
     await this.client.send(new PutCommand({
       TableName: this.tableName,
       Item: entityWithTimestamps,
-      ConditionExpression: 'attribute_not_exists(PK)'
+      // Ensure we don't overwrite an existing item with the same PK+SK
+      ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)'
     }));
 
     return entityWithTimestamps;

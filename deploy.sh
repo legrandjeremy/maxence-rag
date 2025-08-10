@@ -373,7 +373,7 @@ EOF
         # Get CloudFront distribution ID
         log_info "Retrieving CloudFront distribution ID..."
         CLOUDFRONT_ID=$(aws ssm get-parameter \
-            --name "/$ENVIRONMENT/luna-front/cloudfront_id" \
+            --name "/$ENVIRONMENT/luna-front/cloudfront_distribution_id" \
             --query 'Parameter.Value' \
             --output text 2>/dev/null || echo "")
         

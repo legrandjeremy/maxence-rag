@@ -22,6 +22,7 @@ export interface ChatEntity extends BaseEntity {
   title: string;
   lastMessageAt: string;
   isActive: boolean;
+  stage?: 'initial_contact' | 'name_request' | 'feeling_inquiry' | 'deeper_probing' | 'astrological_connection' | 'vision_revelation' | 'guidance_transition';
 }
 
 export interface ChatMessageEntity extends BaseEntity {
@@ -72,7 +73,8 @@ export class ChatService {
       createdAt: now,
       updatedAt: now,
       lastMessageAt: now,
-      isActive: true
+      isActive: true,
+      stage: 'initial_contact'
     };
 
     await this.databaseService.create<ChatEntity>(chatEntity);
@@ -87,7 +89,8 @@ export class ChatService {
       createdAt: now,
       updatedAt: now,
       lastMessageAt: now,
-      isActive: true
+      isActive: true,
+      stage: 'initial_contact'
     };
   }
 
@@ -168,7 +171,8 @@ Peux-tu me dire ton prénom ?`;
         createdAt: entity.createdAt,
         updatedAt: entity.updatedAt,
         lastMessageAt: entity.lastMessageAt,
-        isActive: entity.isActive
+        isActive: entity.isActive,
+        stage: entity.stage
       }))
       .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
 
@@ -198,7 +202,8 @@ Peux-tu me dire ton prénom ?`;
       createdAt: chatEntity.createdAt,
       updatedAt: chatEntity.updatedAt,
       lastMessageAt: chatEntity.lastMessageAt,
-      isActive: chatEntity.isActive
+      isActive: chatEntity.isActive,
+      stage: chatEntity.stage
     };
   }
 
@@ -277,20 +282,43 @@ Peux-tu me dire ton prénom ?`;
         content: msg.content
       }));
 
+    // Determine explicit stage based on conversation progress
+    const userMessageCount = conversationHistory.filter(m => m.role === 'user').length;
+    const explicitStage = this.computeStage(userMessageCount, chat.stage);
+
     // Generate AI response using RAG
     let bedrockResponse: BedrockResponse;
     try {
       bedrockResponse = await this.bedrockService.generateRAGResponse(
         request.content,
-        conversationHistory
+        conversationHistory,
+        explicitStage
       );
     } catch (error) {
       console.error('Error generating RAG response:', error);
       // Fallback to direct response if RAG fails
       bedrockResponse = await this.bedrockService.generateDirectResponse(
         request.content,
-        conversationHistory
+        conversationHistory,
+        explicitStage
       );
+    }
+
+    // Optional no-repetition safeguard: if same as last assistant response, retry once with anti-repeat nudge
+    const lastAssistant = [...history.messages].reverse().find(m => m.role === 'assistant');
+    const normalizedNew = (bedrockResponse.content || '').trim().toLowerCase();
+    const normalizedPrev = (lastAssistant?.content || '').trim().toLowerCase();
+    if (normalizedNew && normalizedPrev && normalizedNew === normalizedPrev) {
+      try {
+        const antiRepeatPrompt = `${request.content}\n\nNe répète pas ta précédente réponse. Apporte des éléments nouveaux, concrets et différents.`;
+        bedrockResponse = await this.bedrockService.generateDirectResponse(
+          antiRepeatPrompt,
+          conversationHistory,
+          explicitStage
+        );
+      } catch (err) {
+        // keep original bedrockResponse on failure
+      }
     }
 
     // Save assistant message
@@ -322,13 +350,14 @@ Peux-tu me dire ton prénom ?`;
 
     await this.databaseService.create<ChatMessageEntity>(assistantMessageEntity);
 
-    // Update chat's lastMessageAt
+    // Update chat's lastMessageAt and stage
     await this.databaseService.update<ChatEntity>(
       `CHAT#${userEmail}`,
       `CHAT#${chatId}`,
       {
         lastMessageAt: assistantTimestamp,
-        updatedAt: assistantTimestamp
+        updatedAt: assistantTimestamp,
+        stage: this.advanceStage(explicitStage)
       }
     );
 
@@ -351,6 +380,37 @@ Peux-tu me dire ton prénom ?`;
         metadata: assistantMessageEntity.metadata
       }
     };
+  }
+
+  /**
+   * Compute conversation stage name based on simple heuristics
+   */
+  private computeStage(userMessageCount: number, current?: ChatEntity['stage']): ChatEntity['stage'] {
+    if (userMessageCount === 0) return 'initial_contact';
+    if (userMessageCount === 1) return 'feeling_inquiry'; // name asked already
+    if (userMessageCount <= 2) return 'feeling_inquiry';
+    if (userMessageCount <= 4) return 'deeper_probing';
+    if (userMessageCount <= 6) return 'astrological_connection';
+    if (userMessageCount <= 8) return 'vision_revelation';
+    return 'guidance_transition';
+  }
+
+  /**
+   * Advance stage linearly to the next step
+   */
+  private advanceStage(stage?: ChatEntity['stage']): ChatEntity['stage'] {
+    const order: NonNullable<ChatEntity['stage']>[] = [
+      'initial_contact',
+      'name_request',
+      'feeling_inquiry',
+      'deeper_probing',
+      'astrological_connection',
+      'vision_revelation',
+      'guidance_transition'
+    ];
+    const idx = stage ? order.indexOf(stage) : -1;
+    if (idx < 0) return 'name_request';
+    return order[Math.min(idx + 1, order.length - 1)];
   }
 
   /**

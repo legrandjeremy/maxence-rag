@@ -9,7 +9,7 @@
 
 <script setup lang="ts">
 import GuestChatWidget from 'src/components/GuestChatWidget.vue';
-import { onMounted } from 'vue';
+import { onMounted, onBeforeUnmount } from 'vue';
 
 // Optimize for iframe embedding
 onMounted(() => {
@@ -22,6 +22,15 @@ onMounted(() => {
   
   // Send ready message to parent window
   window.parent?.postMessage({ type: 'chat-iframe-ready' }, '*');
+
+  // Inform parent to disable outside-click closing once chat starts
+  const onMessage = (event: MessageEvent) => {
+    if (event.data?.type === 'chat-started') {
+      window.parent?.postMessage({ type: 'disable-overlay-close' }, '*');
+    }
+  };
+  window.addEventListener('message', onMessage);
+  onBeforeUnmount(() => window.removeEventListener('message', onMessage));
 });
 </script>
 

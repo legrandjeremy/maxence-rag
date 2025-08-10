@@ -72,21 +72,8 @@ export const useGuestChatStore = defineStore('guestChat', () => {
       isLoading.value = true;
       clearError();
 
-      const response = await fetch(`${api.client.defaults.baseURL}/api/guest-chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request)
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to create chat');
-      }
-
-      const data = await response.json();
-      currentChat.value = data.data;
+      const response = await api.post<GuestChat>('/api/guest-chat', request);
+      currentChat.value = response.data.data as unknown as GuestChat;
       currentMessages.value = [];
       setUserEmail(request.email);
 
@@ -105,22 +92,14 @@ export const useGuestChatStore = defineStore('guestChat', () => {
       isLoadingMessages.value = true;
       clearError();
 
-      const params = new URLSearchParams({
-        email: email,
-        limit: '50'
-      });
-
-      const response = await fetch(`${api.client.defaults.baseURL}/api/guest-chat/${chatId}/history?${params}`);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to load chat history');
-      }
-
-      const data = await response.json();
-      currentMessages.value = data.data.messages || [];
+      const response = await api.get<GuestChatHistoryResponse>(`/api/guest-chat/${chatId}/history?email=${encodeURIComponent(email)}&limit=50`);
+      currentMessages.value = (response.data.data as unknown as GuestChatHistoryResponse).messages || [];
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load chat history';
+      if (err instanceof Error && /chat not found|access denied/i.test(err.message)) {
+        error.value = "La conversation n'est plus disponible.";
+      } else {
+        error.value = err instanceof Error ? err.message : 'Failed to load chat history';
+      }
       console.error('Error loading guest chat history:', err);
     } finally {
       isLoadingMessages.value = false;
@@ -134,29 +113,46 @@ export const useGuestChatStore = defineStore('guestChat', () => {
       isSendingMessage.value = true;
       clearError();
 
+      const trimmed = content.trim();
       const request: GuestChatSendMessageRequest = { 
-        content: content.trim(),
+        content: trimmed,
         email: email
       };
 
-      const response = await fetch(`${api.client.defaults.baseURL}/api/guest-chat/${chatId}/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request)
-      });
+      // Optimistic user message
+      const optimisticUser: GuestChatMessage = {
+        id: `local-${Date.now()}`,
+        chatId,
+        userEmail: email,
+        content: trimmed,
+        role: 'user',
+        timestamp: new Date().toISOString()
+      };
+      currentMessages.value.push(optimisticUser);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to send message');
+      // Placeholder assistant for progressive reveal
+      const placeholderAssistant: GuestChatMessage = {
+        id: `local-assistant-${Date.now()}`,
+        chatId,
+        userEmail: email,
+        content: '',
+        role: 'assistant',
+        timestamp: new Date().toISOString()
+      };
+      currentMessages.value.push(placeholderAssistant);
+
+      const response = await api.post<{ userMessage: GuestChatMessage; assistantMessage: GuestChatMessage }>(`/api/guest-chat/${chatId}/messages`, request);
+      const { userMessage, assistantMessage } = response.data.data as { userMessage: GuestChatMessage; assistantMessage: GuestChatMessage };
+
+      // Replace optimistic user with server one
+      const idx = currentMessages.value.findIndex(m => m.id === optimisticUser.id);
+      if (idx !== -1) {
+        currentMessages.value.splice(idx, 1, userMessage);
+      } else {
+        currentMessages.value.push(userMessage);
       }
-
-      const data = await response.json();
-      const { userMessage, assistantMessage } = data.data;
-      
-      // Add both messages to current messages
-      currentMessages.value.push(userMessage, assistantMessage);
+      // Reveal assistant message progressively
+      await revealAssistantMessageGradually(placeholderAssistant.id, assistantMessage);
 
       // Update the chat's lastMessageAt
       if (currentChat.value) {
@@ -166,7 +162,11 @@ export const useGuestChatStore = defineStore('guestChat', () => {
 
       return true;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to send message';
+      if (err instanceof Error && /chat not found|access denied/i.test(err.message)) {
+        error.value = "La conversation n'est plus disponible.";
+      } else {
+        error.value = err instanceof Error ? err.message : 'Failed to send message';
+      }
       console.error('Error sending guest message:', err);
       return false;
     } finally {
@@ -174,11 +174,38 @@ export const useGuestChatStore = defineStore('guestChat', () => {
     }
   };
 
+  const revealAssistantMessageGradually = async (placeholderId: string, finalAssistant: GuestChatMessage) => {
+    return new Promise<void>((resolve) => {
+      const index = currentMessages.value.findIndex(m => m.id === placeholderId);
+      if (index === -1) {
+        currentMessages.value.push(finalAssistant);
+        resolve();
+        return;
+      }
+      const chunkSize = 24;
+      const minDelay = 15;
+      const maxDelay = 35;
+      let pos = 0;
+      const timer = () => {
+        pos = Math.min(pos + chunkSize, finalAssistant.content.length);
+        const next = { ...currentMessages.value[index], content: finalAssistant.content.slice(0, pos), metadata: finalAssistant.metadata, timestamp: finalAssistant.timestamp } as GuestChatMessage;
+        currentMessages.value.splice(index, 1, next);
+        if (pos >= finalAssistant.content.length) {
+          currentMessages.value.splice(index, 1, finalAssistant);
+          resolve();
+          return;
+        }
+        const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+        window.setTimeout(timer, delay);
+      };
+      timer();
+    });
+  };
+
   const initializeGuestChat = async (email: string): Promise<boolean> => {
     if (!email.trim()) return false;
     
     setUserEmail(email);
-    
     // Create a new chat for the guest user
     return await createChat({
       email: email,

@@ -213,7 +213,8 @@ Tu ne dois JAMAIS parler d'argent directement. Tu dis :
    */
   async generateRAGResponse(
     prompt: string,
-    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+    explicitStage?: ConversationStage | keyof typeof ConversationStage
   ): Promise<BedrockResponse> {
     try {
       if (!this.bedrockAgentClient || !this.knowledgeBaseId) {
@@ -224,10 +225,12 @@ Tu ne dois JAMAIS parler d'argent directement. Tu dis :
       const startTime = Date.now();
 
       // Retrieve relevant documents
-      const ragContext = await this.retrieveDocuments(prompt, 5);
+      const ragContext = await this.retrieveDocuments(prompt, 3);
       
       // Determine conversation stage
-      const stage = this.determineConversationStage(conversationHistory);
+      const stage = explicitStage
+        ? this.toConversationStage(explicitStage)
+        : this.determineConversationStage(conversationHistory);
       const lunaPrompt = this.getLunaPrompt(stage);
       
       // Build conversation context
@@ -242,10 +245,10 @@ Tu ne dois JAMAIS parler d'argent directement. Tu dis :
         accept: 'application/json',
         body: JSON.stringify({
           prompt: fullPrompt,
-          max_tokens: 4000,
+          max_tokens: 800,
           temperature: 0.8, // Higher temperature for more mystical/creative responses
           top_p: 0.9,
-          stop: ['[INST]', 'Utilisateur:', 'User:']
+          stop: ['[INST]', 'Utilisateur:', 'User:', 'Luna:']
         })
       };
 
@@ -281,13 +284,16 @@ Tu ne dois JAMAIS parler d'argent directement. Tu dis :
    */
   async generateLunaResponse(
     prompt: string,
-    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+    explicitStage?: ConversationStage | keyof typeof ConversationStage
   ): Promise<BedrockResponse> {
     try {
       const startTime = Date.now();
 
       // Determine conversation stage
-      const stage = this.determineConversationStage(conversationHistory);
+      const stage = explicitStage
+        ? this.toConversationStage(explicitStage)
+        : this.determineConversationStage(conversationHistory);
       const lunaPrompt = this.getLunaPrompt(stage);
       
       // Build the conversation
@@ -305,10 +311,10 @@ Tu ne dois JAMAIS parler d'argent directement. Tu dis :
         accept: 'application/json',
         body: JSON.stringify({
           prompt: conversationText,
-          max_tokens: 4000,
+          max_tokens: 800,
           temperature: 0.8, // Higher temperature for mystical responses
           top_p: 0.9,
-          stop: ['[INST]', 'Utilisateur:', 'User:']
+          stop: ['[INST]', 'Utilisateur:', 'User:', 'Luna:']
         })
       };
 
@@ -337,9 +343,10 @@ Tu ne dois JAMAIS parler d'argent directement. Tu dis :
    */
   async generateDirectResponse(
     prompt: string,
-    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+    explicitStage?: ConversationStage | keyof typeof ConversationStage
   ): Promise<BedrockResponse> {
-    return this.generateLunaResponse(prompt, conversationHistory);
+    return this.generateLunaResponse(prompt, conversationHistory, explicitStage);
   }
 
   /**
@@ -417,9 +424,20 @@ Réponds en tant que Luna: [/INST]`;
     return content
       .replace(/^\s*Luna:\s*/i, '') // Remove "Luna:" prefix
       .replace(/^\s*Assistant:\s*/i, '') // Remove "Assistant:" prefix
-      .replace(/\[INST\].*?\[\/INST\]/g, '') // Remove instruction tags
+      .replace(/^(?:Personne|Utilisateur|User):\s*/gmi, '') // Remove role prefixes echoed
+      .replace(/\[INST\][\s\S]*?\[\/INST\]/g, '') // Remove instruction tags across lines
       .replace(/^\s*\*\*[^*]+\*\*:?\s*/i, '') // Remove bold headers
+      .replace(/Instructions de réponse:[\s\S]*$/i, '') // Drop echoed instructions tail
       .trim();
+  }
+
+  /** Map various stage inputs to ConversationStage enum safely */
+  private toConversationStage(stage: ConversationStage | keyof typeof ConversationStage): ConversationStage {
+    if (Object.values(ConversationStage).includes(stage as ConversationStage)) {
+      return stage as ConversationStage;
+    }
+    const key = stage as keyof typeof ConversationStage;
+    return ConversationStage[key] ?? ConversationStage.INITIAL_CONTACT;
   }
 
   /**

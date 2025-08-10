@@ -145,6 +145,7 @@ const props = withDefaults(defineProps<Props>(), {
 const guestChatStore = useGuestChatStore();
 const messageInput = ref('');
 const scrollArea = ref();
+const hasSignaledChatStarted = ref(false);
 
 // Mystical action suggestions for Luna
 const mysticalActions: MysticalAction[] = [
@@ -172,27 +173,32 @@ const inputPlaceholder = computed(() => {
 });
 
 // Methods
-const initializeChat = async () => {
-  // Get email from URL params or props
-  const urlParams = new URLSearchParams(window.location.search);
-  const emailFromUrl = urlParams.get('email');
-  const email = emailFromUrl || props.userEmail || localStorage.getItem('guestEmail') || '';
-  
-  if (!email) {
-    console.error('No email provided for guest chat');
-    guestChatStore.error = 'Email requis pour la consultation';
-    return;
-  }
+  const initializeChat = async () => {
+    // Get email from URL params or props
+    const urlParams = new URLSearchParams(window.location.search);
+    const emailFromUrl = urlParams.get('email');
+    const email = emailFromUrl || props.userEmail || localStorage.getItem('guestEmail') || '';
 
-  // Store email for future use
-  localStorage.setItem('guestEmail', email);
-  
-  // Initialize guest chat
-  const success = await guestChatStore.initializeGuestChat(email);
-  if (!success) {
-    console.error('Failed to initialize guest chat');
+    if (!email) {
+      console.error('No email provided for guest chat');
+      guestChatStore.error = 'Email requis pour la consultation';
+      return;
+    }
+
+    // Store email for future use (no chat id persistence)
+    localStorage.setItem('guestEmail', email);
+
+    // Initialize or resume guest chat
+    const success = await guestChatStore.initializeGuestChat(email);
+    if (!success) {
+      console.error('Failed to initialize guest chat');
+    }
+  // If resuming with existing history, notify parent that chat has started
+  if (!hasSignaledChatStarted.value && (guestChatStore.currentMessages.length > 0 || guestChatStore.currentChat)) {
+    window.parent?.postMessage({ type: 'chat-started' }, '*');
+    hasSignaledChatStarted.value = true;
   }
-};
+  };
 
 const sendMessage = async () => {
   if (!messageInput.value.trim() || !guestChatStore.currentChat || !guestChatStore.userEmail) return;
@@ -208,6 +214,10 @@ const sendMessage = async () => {
     void nextTick(() => {
       scrollToBottom();
     });
+  }
+  if (!hasSignaledChatStarted.value && guestChatStore.currentMessages.length > 0) {
+    window.parent?.postMessage({ type: 'chat-started' }, '*');
+    hasSignaledChatStarted.value = true;
   }
 };
 
@@ -225,6 +235,10 @@ const sendQuickMessage = async (message: string) => {
     void nextTick(() => {
       scrollToBottom();
     });
+  }
+  if (!hasSignaledChatStarted.value && guestChatStore.currentMessages.length > 0) {
+    window.parent?.postMessage({ type: 'chat-started' }, '*');
+    hasSignaledChatStarted.value = true;
   }
 };
 
@@ -263,6 +277,10 @@ watch(() => guestChatStore.currentMessages.length, () => {
   void nextTick(() => {
     scrollToBottom();
   });
+  if (!hasSignaledChatStarted.value && guestChatStore.currentMessages.length > 0) {
+    window.parent?.postMessage({ type: 'chat-started' }, '*');
+    hasSignaledChatStarted.value = true;
+  }
 });
 
 // Listen for email from parent window (for iframe communication)

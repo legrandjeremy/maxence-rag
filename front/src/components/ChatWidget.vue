@@ -145,9 +145,7 @@ const mysticalActions: MysticalAction[] = [
 ];
 
 // Computed
-const messages = computed(() => {
-  return chatStore.currentMessages.slice(-20); // Show last 20 messages for iframe
-});
+const messages = computed(() => chatStore.currentMessages.slice(-20));
 
 const inputPlaceholder = computed(() => {
   const messageCount = messages.value.length;
