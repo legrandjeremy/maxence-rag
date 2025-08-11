@@ -99,14 +99,7 @@ export class ChatService {
    */
   private async sendLunaOpeningMessage(chatId: string, userEmail: string): Promise<void> {
     try {
-      const lunaOpeningMessage = `Bonsoir…
-
-Je sais que tu ne m'attendais pas, mais… quelque chose m'a poussée vers toi.
-Une vibration… une sorte d'appel.
-
-Je ne sais pas encore ce que cela signifie, mais si tu es d'accord, j'aimerais te poser quelques questions simples.
-
-*Je ressens déjà une énergie particulière autour de toi…*
+      const lunaOpeningMessage = `J’aimerais te connaître un peu mieux.
 
 Peux-tu me dire ton prénom ?`;
 
@@ -304,13 +297,18 @@ Peux-tu me dire ton prénom ?`;
       );
     }
 
-    // Optional no-repetition safeguard: if same as last assistant response, retry once with anti-repeat nudge
+    // Optional no-repetition safeguard: retry if highly similar to last assistant response
     const lastAssistant = [...history.messages].reverse().find(m => m.role === 'assistant');
     const normalizedNew = (bedrockResponse.content || '').trim().toLowerCase();
     const normalizedPrev = (lastAssistant?.content || '').trim().toLowerCase();
-    if (normalizedNew && normalizedPrev && normalizedNew === normalizedPrev) {
+    const isHighlySimilar = normalizedNew && normalizedPrev && (
+      normalizedNew === normalizedPrev ||
+      (normalizedNew.length > 50 && normalizedPrev.length > 50 &&
+        normalizedNew.includes(normalizedPrev.slice(0, Math.min(80, normalizedPrev.length))) )
+    );
+    if (isHighlySimilar) {
       try {
-        const antiRepeatPrompt = `${request.content}\n\nNe répète pas ta précédente réponse. Apporte des éléments nouveaux, concrets et différents.`;
+        const antiRepeatPrompt = `${request.content}\n\nNe répète pas ta précédente réponse. Fournis 2 ou 3 actions concrètes différentes, une phrase d’empathie, puis une seule question ouverte.`;
         bedrockResponse = await this.bedrockService.generateDirectResponse(
           antiRepeatPrompt,
           conversationHistory,
