@@ -52,6 +52,10 @@ Globals:
     CodeUri: .
     Timeout: 30
     MemorySize: 512
+    Environment:
+      Variables:
+        STRIPE_SECRET_KEY: "sk_test_51RwQBw0Xrngfa9BoHFO3cedbV8WbNr2iHA7SN3eRZcuSnF2NrzBrphTDY9JwBHnEyX0gIgqx7JBDqKAWFyPa8Klf00MBfGGTEe"
+        STRIPE_WEBHOOK_SECRET: "whsec_7N5UUz66uBexouvbHTiXRuurbab16EYL"
 
 Resources:
   ApiUrlSSMParameter:
@@ -270,10 +274,13 @@ Resources:
                   - bedrock:InvokeModelWithResponseStream
                 Resource:
                   - arn:aws:bedrock:us-east-1::foundation-model/*
+                  - arn:aws:bedrock:us-east-1:033439678491:inference-profile/*
+                  - arn:aws:bedrock:us-west-2::foundation-model/meta.llama3-2-3b-instruct-v1:0
               - Effect: Allow
                 Action:
                   - bedrock:Retrieve
                   - bedrock:RetrieveAndGenerate
+                  - bedrock:InvokeModel
                 Resource:
                   - arn:aws:bedrock:us-east-1:*:knowledge-base/*
 
@@ -306,6 +313,60 @@ Resources:
         MaxAge: 600
 
   # Public Functions (No Auth Required)
+  CreateCheckoutSessionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-luna-front-create-checkout-session
+      CodeUri: src/
+      Handler: handlers/payments/create-checkout-session.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          FRONTEND_URL: !Sub "https://${PlayerManagementCloudFrontDistribution.DomainName}"
+      Events:
+        CreateCheckoutSession:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/payments/checkout
+            Method: POST
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/payments/create-checkout-session.ts
+
+  StripeWebhookFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-luna-front-stripe-webhook
+      CodeUri: src/
+      Handler: handlers/payments/stripe-webhook.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Events:
+        StripeWebhook:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/payments/webhook
+            Method: POST
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/payments/stripe-webhook.ts
   CollectEmailFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -430,6 +491,35 @@ Resources:
         Sourcemap: true
         EntryPoints:
           - handlers/guest-chat/get-guest-chat-history.ts
+
+  GetGuestChatStatusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-luna-front-get-guest-chat-status
+      CodeUri: src/
+      Handler: handlers/guest-chat/get-guest-chat-status.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+      Events:
+        GetGuestChatStatus:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/guest-chat/{chatId}/status
+            Method: GET
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/guest-chat/get-guest-chat-status.ts
 
   # User Management Functions
   CreateUserFunction:
@@ -616,7 +706,7 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
-          BEDROCK_KNOWLEDGE_BASE_ID: XJSHBJYNTF
+          BEDROCK_KNOWLEDGE_BASE_ID: X9CIYS980F
       Events:
         CreateChat:
           Type: HttpApi
@@ -650,7 +740,7 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
-          BEDROCK_KNOWLEDGE_BASE_ID: XJSHBJYNTF
+          BEDROCK_KNOWLEDGE_BASE_ID: X9CIYS980F
       Events:
         GetChats:
           Type: HttpApi
@@ -686,7 +776,7 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
-          BEDROCK_KNOWLEDGE_BASE_ID: XJSHBJYNTF
+          BEDROCK_KNOWLEDGE_BASE_ID: X9CIYS980F
       Events:
         SendMessage:
           Type: HttpApi
@@ -720,7 +810,7 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
-          BEDROCK_KNOWLEDGE_BASE_ID: XJSHBJYNTF
+          BEDROCK_KNOWLEDGE_BASE_ID: X9CIYS980F
       Events:
         GetChatHistory:
           Type: HttpApi
@@ -754,7 +844,7 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
-          BEDROCK_KNOWLEDGE_BASE_ID: XJSHBJYNTF
+          BEDROCK_KNOWLEDGE_BASE_ID: X9CIYS980F
       Events:
         UpdateChat:
           Type: HttpApi
@@ -788,7 +878,7 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
-          BEDROCK_KNOWLEDGE_BASE_ID: XJSHBJYNTF
+          BEDROCK_KNOWLEDGE_BASE_ID: X9CIYS980F
       Events:
         DeleteChat:
           Type: HttpApi

@@ -46,7 +46,8 @@ class ApiService {
     this.client.interceptors.response.use(
       (response) => response,
       (error) => {
-        return Promise.reject(new Error(handleApiError(error)))
+        const msg = handleApiError(error)
+        return Promise.reject(new Error(msg))
       }
     )
   }

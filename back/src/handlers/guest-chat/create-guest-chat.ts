@@ -5,7 +5,7 @@ import { ChatCreateRequest } from '../../models/Chat';
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     // Parse request body
-    let requestBody: ChatCreateRequest & { email: string };
+    let requestBody: ChatCreateRequest & { email?: string };
     try {
       requestBody = JSON.parse(event.body || '{}');
     } catch (error) {
@@ -15,24 +15,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       });
     }
 
-    // Validate email
-    if (!requestBody.email || !requestBody.email.trim()) {
-      return createResponse(400, { 
-        error: 'Bad Request', 
-        message: 'Email is required' 
-      });
-    }
-
-    const email = requestBody.email.trim().toLowerCase();
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return createResponse(400, { 
-        error: 'Bad Request', 
-        message: 'Invalid email format' 
-      });
-    }
+    // Optional email support: if not provided, create a random guest identifier
+    const email = (requestBody.email || '').trim().toLowerCase() || generateGuestEmail();
 
     console.log(`Creating guest chat for email: ${email}`);
 
@@ -62,3 +46,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     });
   }
 }; 
+
+function generateGuestEmail(): string {
+  const random = Math.random().toString(36).slice(2);
+  const ts = Date.now().toString(36);
+  return `guest_${ts}_${random}@guest.luna`;
+}

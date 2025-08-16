@@ -82,7 +82,7 @@
           outlined
           :placeholder="inputPlaceholder"
           :loading="guestChatStore.isSendingMessage"
-          :disable="guestChatStore.isSendingMessage || !guestChatStore.currentChat"
+          :disable="guestChatStore.isSendingMessage || !guestChatStore.currentChat || guestChatStore.isBlockedForPayment"
           @keyup.enter="sendMessage"
           hide-bottom-space
           class="luna-input"
@@ -94,7 +94,7 @@
               round
               icon="send"
               size="md"
-              :disable="!messageInput.trim() || guestChatStore.isSendingMessage || !guestChatStore.currentChat"
+              :disable="!messageInput.trim() || guestChatStore.isSendingMessage || !guestChatStore.currentChat || guestChatStore.isBlockedForPayment"
               @click="sendMessage"
               class="luna-send-btn"
             />
@@ -113,7 +113,7 @@
               :label="action.label"
               @click="sendQuickMessage(action.message)"
               class="mystical-action-btn"
-              :disable="guestChatStore.isSendingMessage || !guestChatStore.currentChat"
+              :disable="guestChatStore.isSendingMessage || !guestChatStore.currentChat || guestChatStore.isBlockedForPayment"
             />
           </div>
         </div>
@@ -124,6 +124,19 @@
           {{ guestChatStore.error }}
           <q-btn flat dense size="sm" icon="close" @click="guestChatStore.clearError()" />
         </div>
+
+        <div class="row items-center q-mt-sm" v-if="!guestChatStore.isBlockedForPayment && guestChatStore.conversationStartedAt">
+          <q-badge color="primary" outline>
+            {{ formattedRemaining }}
+          </q-badge>
+        </div>
+
+        <q-banner v-if="guestChatStore.isBlockedForPayment" class="q-mt-md" rounded dense inline-actions>
+          <div class="text-body2">La session gratuite est terminée. Réglez 5 € pour continuer.</div>
+          <template v-slot:action>
+            <q-btn color="primary" label="Payer 5 €" @click="openPayment" flat />
+          </template>
+        </q-banner>
       </q-card-section>
     </q-card>
   </div>
@@ -131,6 +144,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue';
+import { api } from 'src/services/api';
 import { useGuestChatStore } from 'src/stores/guestChatStore';
 import { format } from 'date-fns';
 
@@ -183,22 +197,17 @@ const inputPlaceholder = computed(() => {
 
 // Methods
   const initializeChat = async () => {
-    // Get email from URL params or props
+    // Get email from URL params or props (optional now)
     const urlParams = new URLSearchParams(window.location.search);
     const emailFromUrl = urlParams.get('email');
     const email = emailFromUrl || props.userEmail || localStorage.getItem('guestEmail') || '';
 
-    if (!email) {
-      console.error('No email provided for guest chat');
-      guestChatStore.error = 'Email requis pour la consultation';
-      return;
+    if (email) {
+      localStorage.setItem('guestEmail', email);
     }
 
-    // Store email for future use (no chat id persistence)
-    localStorage.setItem('guestEmail', email);
-
-    // Initialize or resume guest chat
-    const success = await guestChatStore.initializeGuestChat(email);
+    // Initialize or resume guest chat (anonymous if needed)
+    const success = await guestChatStore.initializeGuestChat(email || undefined);
     if (!success) {
       console.error('Failed to initialize guest chat');
     }
@@ -251,6 +260,28 @@ const sendQuickMessage = async (message: string) => {
   }
 };
 
+const openPayment = async () => {
+  if (!guestChatStore.currentChat || !guestChatStore.userEmail) return;
+  try {
+    const successUrl = window.top ? window.top.location.origin + '/welcome.html?payment=success' : window.location.origin + '/welcome.html?payment=success';
+    const cancelUrl = window.top ? window.top.location.origin + '/welcome.html?payment=cancel' : window.location.origin + '/welcome.html?payment=cancel';
+    const resp = await api.post<{ id: string; url: string }>(
+      '/api/payments/checkout',
+      {
+        chatId: guestChatStore.currentChat.id,
+        email: guestChatStore.userEmail,
+        successUrl,
+        cancelUrl
+      }
+    );
+    const url = (resp.data.data as unknown as { id: string; url: string }).url;
+    if (url) {
+      window.open(url, 'stripe_checkout', 'width=480,height=720');
+    }
+  } catch (e) {
+    console.error('Failed to open payment', e);
+  }
+};
 const scrollToBottom = () => {
   if (scrollArea.value) {
     const scrollTarget = scrollArea.value.getScrollTarget();
@@ -273,11 +304,31 @@ const formatMessageContent = (content: string): string => {
 
 // Lifecycle
 onMounted(async () => {
+  // Try to recover state from localStorage first (in case iframe was reloaded)
+  if (!guestChatStore.currentChat || !guestChatStore.userEmail) {
+    console.log('Attempting to recover chat state from localStorage on mount...');
+    guestChatStore.recoverStateFromStorage();
+  }
+  
   if (props.autoOpen) {
-    await initializeChat();
+    // If we have recovered state, load history instead of creating new chat
+    if (guestChatStore.currentChat && guestChatStore.userEmail) {
+      console.log('Recovered state found, loading existing chat history...');
+      await guestChatStore.loadChatHistory(guestChatStore.currentChat.id, guestChatStore.userEmail);
+      guestChatStore.startConversationTimer();
+    } else {
+      console.log('No recovered state, initializing new chat...');
+      await initializeChat();
+    }
+    
     void nextTick(() => {
       scrollToBottom();
     });
+    
+    // Check payment status on load in case we missed a payment update
+    if (guestChatStore.currentChat && guestChatStore.userEmail && guestChatStore.isBlockedForPayment) {
+      void guestChatStore.checkPaymentStatus(guestChatStore.currentChat.id, guestChatStore.userEmail);
+    }
   }
 });
 
@@ -299,7 +350,17 @@ window.addEventListener('message', (event) => {
     if (!guestChatStore.currentChat) {
       void initializeChat();
     }
+  } else if (event.data.type === 'payment-success') {
+    // Verify payment success with backend database
+    void guestChatStore.handlePaymentSuccess();
   }
+});
+
+const formattedRemaining = computed(() => {
+  const secs = guestChatStore.remainingSeconds as unknown as number;
+  const mm = Math.floor(secs / 60).toString().padStart(2, '0');
+  const ss = Math.floor(secs % 60).toString().padStart(2, '0');
+  return `Temps gratuit: ${mm}:${ss}`;
 });
 </script>
 

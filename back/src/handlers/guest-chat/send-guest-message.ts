@@ -14,7 +14,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // Parse request body
-    let requestBody: ChatSendMessageRequest & { email: string };
+    let requestBody: ChatSendMessageRequest & { email?: string };
     try {
       requestBody = JSON.parse(event.body || '{}');
     } catch (error) {
@@ -24,22 +24,12 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       });
     }
 
-    // Validate email
-    if (!requestBody.email || !requestBody.email.trim()) {
-      return createResponse(400, { 
-        error: 'Bad Request', 
-        message: 'Email is required' 
-      });
-    }
-
-    const email = requestBody.email.trim().toLowerCase();
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return createResponse(400, { 
-        error: 'Bad Request', 
-        message: 'Invalid email format' 
+    // Optional email: if not provided we reject unless chat belongs to a generated guest id in DB
+    const email = (requestBody.email || '').trim().toLowerCase();
+    if (!email) {
+      return createResponse(400, {
+        error: 'Bad Request',
+        message: 'Email or guest identifier is required'
       });
     }
 
@@ -60,7 +50,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log(`Sending guest message for email: ${email}, chatId: ${chatId}`);
 
-    // Verify chat exists and belongs to user (by email)
+    // Verify chat exists and belongs to user (by email or guest id)
     const chat = await chatService.getChatById(email, chatId);
     if (!chat) {
       return createResponse(404, { 
@@ -70,9 +60,20 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // Send message and get AI response
-    const result = await chatService.sendMessage(email, chatId, {
-      content: requestBody.content.trim()
-    });
+    let result;
+    try {
+      result = await chatService.sendMessage(email, chatId, {
+        content: requestBody.content.trim()
+      });
+    } catch (err) {
+      if (err instanceof Error && /payment required/i.test(err.message)) {
+        return createResponse(402, {
+          error: 'Payment Required',
+          message: 'Payment required to continue this conversation'
+        });
+      }
+      throw err;
+    }
 
     return createResponse(200, { 
       data: result,

@@ -22,6 +22,8 @@ export interface ChatEntity extends BaseEntity {
   title: string;
   lastMessageAt: string;
   isActive: boolean;
+  isPaid?: boolean;
+  paywallAt?: string;
   stage?: 'initial_contact' | 'name_request' | 'feeling_inquiry' | 'deeper_probing' | 'astrological_connection' | 'vision_revelation' | 'guidance_transition';
 }
 
@@ -74,6 +76,8 @@ export class ChatService {
       updatedAt: now,
       lastMessageAt: now,
       isActive: true,
+      isPaid: false,
+      paywallAt: new Date(new Date(now).getTime() + 5 * 60 * 1000).toISOString(),
       stage: 'initial_contact'
     };
 
@@ -99,9 +103,8 @@ export class ChatService {
    */
   private async sendLunaOpeningMessage(chatId: string, userEmail: string): Promise<void> {
     try {
-      const lunaOpeningMessage = `J’aimerais te connaître un peu mieux.
-
-Peux-tu me dire ton prénom ?`;
+      const lunaOpeningMessage = `Je vais parler peu, mais juste.
+Dis-moi ton prénom… et ce que tu ressens en ce moment.`;
 
       const timestamp = new Date().toISOString();
       const messageId = uuidv4();
@@ -130,7 +133,7 @@ Peux-tu me dire ton prénom ?`;
       await this.databaseService.create<ChatMessageEntity>(lunaMessageEntity);
 
       // Update chat's lastMessageAt
-      await this.databaseService.update(
+      await this.databaseService.update<ChatEntity>(
         `CHAT#${userEmail}`,
         `CHAT#${chatId}`,
         {
@@ -243,6 +246,14 @@ Peux-tu me dire ton prénom ?`;
       throw new Error('Chat not found or access denied');
     }
 
+    // Payment gating: after 5 minutes from chat creation if not paid
+    const chatRecord = await this.databaseService.get<ChatEntity>(`CHAT#${userEmail}`, `CHAT#${chatId}`);
+    const nowIso = new Date().toISOString();
+    const isPaywalled = !!(chatRecord && chatRecord.paywallAt && !chatRecord.isPaid && nowIso > chatRecord.paywallAt);
+    if (isPaywalled) {
+      throw new Error('Payment required');
+    }
+
     const now = new Date();
     const timestamp = now.toISOString();
     const userMessageId = uuidv4();
@@ -279,22 +290,57 @@ Peux-tu me dire ton prénom ?`;
     const userMessageCount = conversationHistory.filter(m => m.role === 'user').length;
     const explicitStage = this.computeStage(userMessageCount, chat.stage);
 
+    // Detect explicit question from the user to force a direct answer first
+    const userLast = [...history.messages].reverse().find(m => m.role === 'user');
+    const directQuestion = !!(userLast && /\?|comment\b|quoi\b|pourquoi\b|peux[- ]tu|as[- ]tu|propose|propositions|gestes|réduire|pression/i.test(userLast.content));
+    const maybeAnswerFirst = (text: string) => directQuestion
+      ? `Réponds d'abord clairement à la question posée par l'utilisateur en 1–2 lignes, puis poursuis.\n${text}`
+      : text;
+
+    // Force NAME_REQUEST stage if the first user message is probably just a prénom
+    const nameHeuristic = (text: string): boolean => {
+      const t = (text || '').trim().toLowerCase();
+      if (!t) return false;
+      if (/^je m[’' ]?appelle\s+\w{2,}$/i.test(t)) return true;
+      if (/^mon nom\s+est\s+\w{2,}$/i.test(t)) return true;
+      // Single token, letters only, short
+      if (/^[a-zàâäéèêëîïôöùûüç-]{2,20}$/.test(t)) return true;
+      return false;
+    };
+    const stageForGeneration = (userMessageCount === 1 && userLast && nameHeuristic(userLast.content))
+      ? ('name_request' as unknown as import('./BedrockService').ConversationStage)
+      : (explicitStage as unknown as import('./BedrockService').ConversationStage);
+
     // Generate AI response using RAG
     let bedrockResponse: BedrockResponse;
     try {
       bedrockResponse = await this.bedrockService.generateRAGResponse(
-        request.content,
+        maybeAnswerFirst(request.content || 'Dis-moi ton prénom et ce que tu ressens.'),
         conversationHistory,
-        explicitStage
+        stageForGeneration
       );
     } catch (error) {
       console.error('Error generating RAG response:', error);
       // Fallback to direct response if RAG fails
       bedrockResponse = await this.bedrockService.generateDirectResponse(
-        request.content,
+        maybeAnswerFirst(request.content || 'Dis-moi ton prénom et ce que tu ressens.'),
         conversationHistory,
-        explicitStage
+        stageForGeneration
       );
+    }
+
+    // Language safety: if response looks English, retry forcing French
+    if (this.appearsEnglish(bedrockResponse.content)) {
+      try {
+        const reinforcement = `${request.content}\n\nRéponds uniquement en français, sans aucun mot en anglais. Reformule en français clair et concis.`;
+        bedrockResponse = await this.bedrockService.generateDirectResponse(
+          reinforcement,
+          conversationHistory,
+          (explicitStage as unknown as import('./BedrockService').ConversationStage)
+        );
+      } catch (err) {
+        // keep previous response if retry fails
+      }
     }
 
     // Optional no-repetition safeguard: retry if highly similar to last assistant response
@@ -312,7 +358,7 @@ Peux-tu me dire ton prénom ?`;
         bedrockResponse = await this.bedrockService.generateDirectResponse(
           antiRepeatPrompt,
           conversationHistory,
-          explicitStage
+          (explicitStage as unknown as import('./BedrockService').ConversationStage)
         );
       } catch (err) {
         // keep original bedrockResponse on failure
@@ -324,7 +370,7 @@ Peux-tu me dire ton prénom ?`;
     const assistantMessageId = uuidv4();
 
     const assistantMetadata: ChatMessageEntity['metadata'] = {
-      sourceDocuments: bedrockResponse.metadata?.sourceDocuments ?? [],
+      sourceDocuments: (bedrockResponse as any)?.metadata?.sourceDocuments ?? (bedrockResponse as any)?.sourceDocuments ?? [],
       confidence: bedrockResponse.confidence ?? 0,
       processingTime: Date.now() - now.getTime()
     };
@@ -378,6 +424,17 @@ Peux-tu me dire ton prénom ?`;
         metadata: assistantMessageEntity.metadata
       }
     };
+  }
+
+  /** Heuristic: detect if text appears English (very rough) */
+  private appearsEnglish(text: string): boolean {
+    const sample = (text || '').slice(0, 240).toLowerCase();
+    if (!sample) return false;
+    const commonEnglish = [' the ', ' and ', ' you ', ' to ', ' of ', ' in ', ' is ', ' are ', ' i ', ' my '];
+    const commonFrenchHints = [' le ', ' la ', ' les ', ' je ', ' tu ', ' vous ', ' et ', ' est ', ' une ', ' un ', ' des '];
+    const englishHits = commonEnglish.filter(w => sample.includes(w)).length;
+    const frenchHits = commonFrenchHints.filter(w => sample.includes(w)).length;
+    return englishHits > frenchHits + 1;
   }
 
   /**

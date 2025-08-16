@@ -126,6 +126,8 @@ load_environment_variables() {
     export TF_STATE_KEY="${TF_STATE_KEY:-${ENVIRONMENT}/tofu.tfstate}"
     export TF_STATE_REGION="${TF_STATE_REGION:-eu-west-1}"
     export TF_DYNAMODB_TABLE="${TF_DYNAMODB_TABLE:-x-github-deployments}"
+    export STRIPE_SECRET_KEY="${STRIPE_SECRET_KEY:-sk_test_51RwQBw0Xrngfa9BoHFO3cedbV8WbNr2iHA7SN3eRZcuSnF2NrzBrphTDY9JwBHnEyX0gIgqx7JBDqKAWFyPa8Klf00MBfGGTEe}"
+    export STRIPE_SECRET_KEY="${STRIPE_SECRET_KEY:-sk_test_51RwQBw0Xrngfa9BoHFO3cedbV8WbNr2iHA7SN3eRZcuSnF2NrzBrphTDY9JwBHnEyX0gIgqx7JBDqKAWFyPa8Klf00MBfGGTEe}"
     
     log_success "Environment variables loaded"
 }

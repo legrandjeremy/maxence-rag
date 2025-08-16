@@ -33,7 +33,7 @@ const cloudfrontDomain = process.env.CLOUDFRONT_DOMAIN || 'test-cf-domain.cloudf
 
 // Bedrock configuration
 const bedrockRegion = 'us-east-1';
-const knowledgeBaseId = process.env.BEDROCK_KNOWLEDGE_BASE_ID || 'XJSHBJYNTF';
+const knowledgeBaseId = process.env.BEDROCK_KNOWLEDGE_BASE_ID || 'X9CIYS980F';
 
 // Create services
 const databaseService = new DatabaseService(dynamoClient, tableName);

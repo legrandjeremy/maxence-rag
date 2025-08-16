@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { type User } from '@auth0/auth0-vue'
-import { type UserMetaData } from '@uci-tech/uci-users'
 
 // Player Management scopes
 const PLAYER_MANAGEMENT_ADMIN_SCOPE = 'maxence-rag:admin'
@@ -38,7 +37,7 @@ export const useAuthStore = defineStore('auth', () => {
     isReady.value = true
   }
 
-  const setData = (accessToken: string, userObject: User | undefined, email: string, metadata?: UserMetaData) => {
+  const setData = (accessToken: string, userObject: User | undefined, email: string, metadata?: AppMetadata) => {
     try {
       userEmail.value = email
       user.value = userObject

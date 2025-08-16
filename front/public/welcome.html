@@ -190,9 +190,10 @@
             transition: all 0.3s ease;
             box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
             text-decoration: none;
-            display: none;
+            display: block;
             font-weight: 500;
             letter-spacing: 1px;
+            margin-left: 57px;
         }
 
         .chat-button:hover {
@@ -391,8 +392,8 @@
             où intuition et guidance se rencontrent pour éclairer votre chemin.
         </p>
         
-        <!-- Email Collection Form -->
-        <div class="email-form" id="emailForm">
+        <!-- Email Collection Form (disabled: guest session starts without email) -->
+        <div class="email-form" id="emailForm" style="display: none;">
             <h3>✨ Commencez votre consultation</h3>
             <div class="email-input-group">
                 <input 
@@ -411,8 +412,8 @@
             <div class="success-message" id="successMessage"></div>
         </div>
 
-        <!-- Chat Button (shown after email collection) -->
-        <button class="chat-button hidden" id="chatButton" onclick="openChat()">
+        <!-- Chat Button (now available immediately) -->
+        <button class="chat-button" id="chatButton" onclick="openChat()">
             ✨ Entrer en consultation avec Luna
         </button>
         
@@ -440,8 +441,8 @@
     </div>
 
     <script>
-        let emailCollected = false;
-        const API_BASE_URL = 'https://7craymncc6.execute-api.us-east-1.amazonaws.com/staging'; // Will be replaced during deployment
+        let emailCollected = true; // email no longer required for guest chat
+        const API_BASE_URL = 'https://7craymncc6.execute-api.us-east-1.amazonaws.com/staging'; // kept for backward compat (unused)
 
         function submitEmail() {
             const emailInput = document.getElementById('emailInput');
@@ -538,31 +539,49 @@
             document.getElementById('successMessage').style.display = 'none';
         }
 
+        function checkExistingChatState() {
+            try {
+                const savedChat = localStorage.getItem('guestChat_currentChat');
+                const savedEmail = localStorage.getItem('guestChat_userEmail');
+                
+                if (savedChat && savedEmail) {
+                    const chatData = JSON.parse(savedChat);
+                    const chatButton = document.getElementById('chatButton');
+                    
+                    if (chatData && chatData.id) {
+                        // Update button text to indicate continuing session
+                        chatButton.innerHTML = '🔄 Continuer ma consultation avec Luna';
+                        chatButton.title = 'Continuer votre session existante';
+                        console.log('Existing chat session found:', chatData.id);
+                        return { chat: chatData, email: savedEmail };
+                    }
+                }
+            } catch (err) {
+                console.warn('Error checking existing chat state:', err);
+            }
+            return null;
+        }
+
         function openChat() {
-            if (!emailCollected) {
-                showError('Veuillez d\'abord saisir votre email');
-                return;
-            }
-
-            const email = document.getElementById('emailInput').value || localStorage.getItem('userEmail');
-            if (!email) {
-                showError('Email requis pour ouvrir la consultation');
-                return;
-            }
-
-            // Update iframe src with email parameter
             const iframe = document.getElementById('lunaIframe');
-            iframe.src = `/chat-iframe?email=${encodeURIComponent(email)}`;
+            
+            // Check if there's an existing chat to continue
+            const existingState = checkExistingChatState();
+            
+            // Always reset iframe src to ensure fresh load with state recovery
+            iframe.src = `/chat-iframe`;
 
             const overlay = document.getElementById('iframeOverlay');
             overlay.style.display = 'flex';
+            
             // Add a small delay for smooth animation
             setTimeout(() => {
                 overlay.style.opacity = '1';
-                // Send email to iframe once it's loaded
-                setTimeout(() => {
-                    iframe.contentWindow?.postMessage({ type: 'setEmail', email: email }, '*');
-                }, 500);
+                
+                // If continuing existing session, inform user
+                if (existingState) {
+                    console.log('Opening existing chat session:', existingState.chat.id);
+                }
             }, 10);
         }
 
@@ -575,11 +594,14 @@
         }
 
         // Enter key support for email input
-        document.getElementById('emailInput').addEventListener('keypress', function(event) {
-            if (event.key === 'Enter') {
-                submitEmail();
-            }
-        });
+        const emailInputEl = document.getElementById('emailInput');
+        if (emailInputEl) {
+            emailInputEl.addEventListener('keypress', function(event) {
+                if (event.key === 'Enter') {
+                    submitEmail();
+                }
+            });
+        }
 
         // Add smooth transitions
         const overlay = document.getElementById('iframeOverlay');
@@ -589,12 +611,23 @@
         // Check for callback from Auth0 (if user was redirected back)
         window.addEventListener('load', function() {
             const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('code')) {
-                // User returned from Auth0, we can show chat directly
-                emailCollected = true;
-                document.getElementById('emailForm').style.display = 'none';
-                document.getElementById('chatButton').classList.remove('hidden');
-                document.getElementById('chatButton').style.display = 'inline-block';
+            
+            // Check for existing chat state and update UI accordingly
+            checkExistingChatState();
+            
+            // Payment success: inform iframe to unlock
+            if (urlParams.get('payment') === 'success') {
+                const iframe = document.getElementById('lunaIframe');
+                try { iframe.contentWindow?.postMessage({ type: 'payment-success' }, '*'); } catch (_) {}
+            }
+        });
+
+        // Listen to messages from iframe to adjust UI behavior
+        window.addEventListener('message', function(event) {
+            const data = event.data || {};
+            if (data.type === 'disable-overlay-close') {
+                const btn = document.querySelector('.close-button');
+                if (btn) { btn.style.display = 'none'; }
             }
         });
     </script>

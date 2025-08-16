@@ -77,7 +77,6 @@
 <script setup lang="ts">
   import { onMounted, ref } from 'vue'
   import { useAuthStore } from '../stores/authStore'
-  import { ROLE_DR__NATIONAL_FEDERATION_STAFF__ADMIN } from '@uci-tech/uci-users'
   import Clarity from '@microsoft/clarity'
   import { useRouter } from 'vue-router'
   import CountryFlag from 'vue-country-flag-next'

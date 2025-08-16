@@ -50,9 +50,20 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // Send message and get AI response
-    const result = await chatService.sendMessage(userEmail, chatId, {
-      content: requestBody.content.trim()
-    });
+    let result;
+    try {
+      result = await chatService.sendMessage(userEmail, chatId, {
+        content: requestBody.content.trim()
+      });
+    } catch (err) {
+      if (err instanceof Error && /payment required/i.test(err.message)) {
+        return createResponse(402, {
+          error: 'Payment Required',
+          message: 'Payment required to continue this conversation'
+        });
+      }
+      throw err;
+    }
 
     return createResponse(200, { 
       data: result,

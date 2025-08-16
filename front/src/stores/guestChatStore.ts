@@ -51,6 +51,11 @@ export const useGuestChatStore = defineStore('guestChat', () => {
   const isAssistantTyping = ref(false);
   const error = ref<string | null>(null);
   const userEmail = ref<string>('');
+  const conversationStartedAt = ref<number | null>(null);
+  const isBlockedForPayment = ref(false);
+  const freeSecondsTotal = 5 * 60;
+  const remainingSeconds = ref<number>(freeSecondsTotal);
+  let timerId: number | null = null;
 
   // Computed
   const currentChatMessages = computed(() => {
@@ -66,6 +71,33 @@ export const useGuestChatStore = defineStore('guestChat', () => {
 
   const setUserEmail = (email: string) => {
     userEmail.value = email.trim().toLowerCase();
+    // Persist user email for payment recovery
+    if (userEmail.value) {
+      localStorage.setItem('guestChat_userEmail', userEmail.value);
+    }
+  };
+
+  const startConversationTimer = () => {
+    if (!conversationStartedAt.value) {
+      conversationStartedAt.value = Date.now();
+      // Tick every second to update remaining
+      const tick = () => {
+        if (!conversationStartedAt.value) return;
+        const elapsedSec = Math.floor((Date.now() - conversationStartedAt.value) / 1000);
+        remainingSeconds.value = Math.max(0, freeSecondsTotal - elapsedSec);
+        if (remainingSeconds.value <= 0) {
+          isBlockedForPayment.value = true;
+          if (timerId) window.clearInterval(timerId);
+        }
+        
+        // Every 30 seconds, check payment status to ensure sync with backend
+        if (elapsedSec > 0 && elapsedSec % 30 === 0 && isBlockedForPayment.value && currentChat.value && userEmail.value) {
+          void checkPaymentStatus(currentChat.value.id, userEmail.value);
+        }
+      };
+      tick();
+      timerId = window.setInterval(tick, 1000);
+    }
   };
 
   const createChat = async (request: GuestChatCreateRequest): Promise<boolean> => {
@@ -77,10 +109,17 @@ export const useGuestChatStore = defineStore('guestChat', () => {
       currentChat.value = response.data.data as unknown as GuestChat;
       currentMessages.value = [];
       setUserEmail(request.email);
+      
+      // Persist chat info for payment recovery
+      if (currentChat.value) {
+        localStorage.setItem('guestChat_currentChat', JSON.stringify(currentChat.value));
+      }
+      
       // Load opening message from Luna immediately
       if (currentChat.value?.id) {
         await loadChatHistory(currentChat.value.id, request.email);
       }
+      startConversationTimer();
 
       return true;
     } catch (err) {
@@ -113,6 +152,10 @@ export const useGuestChatStore = defineStore('guestChat', () => {
 
   const sendMessage = async (chatId: string, content: string, email: string): Promise<boolean> => {
     if (!content.trim()) return false;
+    if (isBlockedForPayment.value) {
+      error.value = 'La session gratuite est terminée. Veuillez régler 5 € pour continuer.';
+      return false;
+    }
 
     try {
       isSendingMessage.value = true;
@@ -190,12 +233,12 @@ export const useGuestChatStore = defineStore('guestChat', () => {
         resolve();
         return;
       }
-      const chunkSize = 24;
-      const minDelay = 15;
-      const maxDelay = 35;
+      const baseChunk = 6;
       let pos = 0;
-      const timer = () => {
-        pos = Math.min(pos + chunkSize, finalAssistant.content.length);
+      const typeNext = () => {
+        const remaining = finalAssistant.content.length - pos;
+        const dynamicChunk = Math.min(baseChunk + Math.floor(pos / 120), 14);
+        pos = Math.min(pos + Math.min(dynamicChunk, remaining), finalAssistant.content.length);
         const next = { ...currentMessages.value[index], content: finalAssistant.content.slice(0, pos), metadata: finalAssistant.metadata, timestamp: finalAssistant.timestamp } as GuestChatMessage;
         currentMessages.value.splice(index, 1, next);
         if (pos >= finalAssistant.content.length) {
@@ -203,22 +246,180 @@ export const useGuestChatStore = defineStore('guestChat', () => {
           resolve();
           return;
         }
+        const lastChar = finalAssistant.content.charAt(pos - 1);
+        const isPause = /[.,;!?\n]/.test(lastChar);
+        const minDelay = isPause ? 120 : 45;
+        const maxDelay = isPause ? 220 : 85;
         const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
-        window.setTimeout(timer, delay);
+        window.setTimeout(typeNext, delay);
       };
-      timer();
+      typeNext();
     });
   };
 
-  const initializeGuestChat = async (email: string): Promise<boolean> => {
-    if (!email.trim()) return false;
-    
-    setUserEmail(email);
-    // Create a new chat for the guest user
+  const initializeGuestChat = async (email?: string): Promise<boolean> => {
+    const finalEmail = (email && email.trim()) ? email.trim().toLowerCase() : generateAnonymousEmail();
+    setUserEmail(finalEmail);
     return await createChat({
-      email: email,
+      email: finalEmail,
       title: 'Consultation avec Luna'
     });
+  };
+
+  const generateAnonymousEmail = (): string => {
+    // Create a stable pseudo-identifier scoped to this browser using localStorage
+    const key = 'luna-anon-id';
+    let anonId = window.localStorage.getItem(key);
+    if (!anonId) {
+      const random = Math.random().toString(36).slice(2);
+      const ts = Date.now().toString(36);
+      anonId = `anon_${ts}_${random}`;
+      window.localStorage.setItem(key, anonId);
+    }
+    return `${anonId}@guest.luna`;
+  };
+
+  const checkPaymentStatus = async (chatId: string, email: string): Promise<boolean> => {
+    try {
+      const response = await api.get<{ isPaid: boolean; paywallAt: string | null; lastMessageAt: string }>(
+        `/api/guest-chat/${chatId}/status?email=${encodeURIComponent(email)}`
+      );
+      const status = response.data.data;
+      
+      // Update local state based on backend database state
+      if (status.isPaid) {
+        isBlockedForPayment.value = false;
+        // Stop the timer since payment is confirmed
+        if (timerId) {
+          window.clearInterval(timerId);
+          timerId = null;
+        }
+        return true;
+      }
+      
+      // Check if paywall time has passed and not paid
+      if (status.paywallAt) {
+        const now = new Date().toISOString();
+        if (now > status.paywallAt && !status.isPaid) {
+          isBlockedForPayment.value = true;
+          return false;
+        }
+      }
+      
+      return status.isPaid;
+    } catch (err) {
+      console.error('Failed to check payment status', err);
+      return false;
+    }
+  };
+
+  const pollPaymentStatus = async (chatId: string, email: string, maxAttempts: number = 10): Promise<boolean> => {
+    let attempts = 0;
+    
+    return new Promise((resolve) => {
+      const poll = async () => {
+        attempts++;
+        const isPaid = await checkPaymentStatus(chatId, email);
+        
+        if (isPaid) {
+          console.log('Payment confirmed after', attempts, 'attempts');
+          resolve(true);
+          return;
+        }
+        
+        if (attempts >= maxAttempts) {
+          console.log('Payment polling timeout after', attempts, 'attempts');
+          resolve(false);
+          return;
+        }
+        
+        // Poll every 2 seconds
+        setTimeout(poll, 2000);
+      };
+      
+      // Start polling immediately
+      poll();
+    });
+  };
+
+  const recoverStateFromStorage = (): boolean => {
+    try {
+      // Try to recover currentChat from localStorage
+      if (!currentChat.value) {
+        const savedChat = localStorage.getItem('guestChat_currentChat');
+        if (savedChat) {
+          currentChat.value = JSON.parse(savedChat);
+          console.log('Recovered currentChat from localStorage:', currentChat.value);
+        }
+      }
+      
+      // Try to recover userEmail from localStorage
+      if (!userEmail.value) {
+        const savedEmail = localStorage.getItem('guestChat_userEmail');
+        if (savedEmail) {
+          userEmail.value = savedEmail;
+          console.log('Recovered userEmail from localStorage:', userEmail.value);
+        }
+      }
+      
+      return !!(currentChat.value && userEmail.value);
+    } catch (err) {
+      console.error('Error recovering state from localStorage:', err);
+      return false;
+    }
+  };
+
+  const handlePaymentSuccess = async (): Promise<void> => {
+    console.log('handlePaymentSuccess');
+    console.log('currentChat.value:', currentChat.value);
+    console.log('userEmail.value:', userEmail.value);
+    
+    // Try to recover state from localStorage if missing
+    if (!currentChat.value || !userEmail.value) {
+      console.log('State missing, attempting recovery from localStorage...');
+      const recovered = recoverStateFromStorage();
+      
+      if (!recovered) {
+        console.warn('Cannot handle payment success: no current chat or user email (recovery failed)');
+        error.value = 'Erreur: Session perdue. Veuillez actualiser la page et réessayer.';
+        return;
+      }
+      
+      console.log('State successfully recovered from localStorage');
+    }
+
+    try {
+      console.log('Payment success message received, verifying with backend...');
+      
+      // Show verification message to user
+      error.value = '✅ Paiement reçu ! Vérification en cours...';
+      
+      // Immediately check once  
+      const isPaid = await checkPaymentStatus(currentChat.value!.id, userEmail.value!);
+      
+      if (isPaid) {
+        console.log('Payment confirmed immediately');
+        clearError();
+        return;
+      }
+      
+      // If not immediately confirmed, start polling
+      console.log('Payment not immediately confirmed, starting polling...');
+      error.value = '⏳ Confirmation du paiement en cours... Merci de patienter.';
+      
+      const confirmed = await pollPaymentStatus(currentChat.value!.id, userEmail.value!, 10);
+      
+      if (confirmed) {
+        clearError();
+        console.log('Payment successfully confirmed through polling');
+      } else {
+        console.warn('Payment confirmation timeout - please try again');
+        error.value = '⚠️ Vérification du paiement en cours... Veuillez patienter ou actualiser la page si le problème persiste.';
+      }
+    } catch (err) {
+      console.error('Error handling payment success:', err);
+      error.value = 'Erreur lors de la vérification du paiement. Veuillez actualiser la page.';
+    }
   };
 
   const reset = () => {
@@ -226,6 +427,15 @@ export const useGuestChatStore = defineStore('guestChat', () => {
     currentMessages.value = [];
     userEmail.value = '';
     error.value = null;
+    conversationStartedAt.value = null;
+    isBlockedForPayment.value = false;
+    remainingSeconds.value = freeSecondsTotal;
+    if (timerId) window.clearInterval(timerId);
+    timerId = null;
+    
+    // Clear localStorage
+    localStorage.removeItem('guestChat_currentChat');
+    localStorage.removeItem('guestChat_userEmail');
   };
 
   return {
@@ -238,6 +448,9 @@ export const useGuestChatStore = defineStore('guestChat', () => {
     error,
     isAssistantTyping,
     userEmail,
+    conversationStartedAt,
+    isBlockedForPayment,
+    remainingSeconds,
     
     // Computed
     currentChatMessages,
@@ -249,6 +462,12 @@ export const useGuestChatStore = defineStore('guestChat', () => {
     loadChatHistory,
     sendMessage,
     initializeGuestChat,
+    startConversationTimer,
+    generateAnonymousEmail,
+    checkPaymentStatus,
+    pollPaymentStatus,
+    handlePaymentSuccess,
+    recoverStateFromStorage,
     reset
   };
 }); 

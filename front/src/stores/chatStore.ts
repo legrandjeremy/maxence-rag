@@ -228,24 +228,28 @@ export const useChatStore = defineStore('chat', () => {
         resolve();
         return;
       }
-      const chunkSize = 24;
-      const minDelay = 15;
-      const maxDelay = 35;
+      const baseChunk = 6; // ~word-sized chunks
       let pos = 0;
-      const timer = () => {
-        pos = Math.min(pos + chunkSize, finalAssistant.content.length);
-        const next = { ...currentMessages.value[index], content: finalAssistant.content.slice(0, pos), metadata: finalAssistant.metadata, timestamp: finalAssistant.timestamp };
+      const typeNext = () => {
+        // Increase chunk slightly for longer texts to avoid taking too long
+        const remaining = finalAssistant.content.length - pos;
+        const dynamicChunk = Math.min(baseChunk + Math.floor(pos / 120), 14);
+        pos = Math.min(pos + Math.min(dynamicChunk, remaining), finalAssistant.content.length);
+        const next = { ...currentMessages.value[index], content: finalAssistant.content.slice(0, pos), metadata: finalAssistant.metadata, timestamp: finalAssistant.timestamp } as ChatMessage;
         currentMessages.value.splice(index, 1, next);
         if (pos >= finalAssistant.content.length) {
-          // Replace with the real message id to avoid local ids lingering
           currentMessages.value.splice(index, 1, finalAssistant);
           resolve();
           return;
         }
+        const lastChar = finalAssistant.content.charAt(pos - 1);
+        const isPause = /[.,;!?\n]/.test(lastChar);
+        const minDelay = isPause ? 120 : 45;
+        const maxDelay = isPause ? 220 : 85;
         const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
-        window.setTimeout(timer, delay);
+        window.setTimeout(typeNext, delay);
       };
-      timer();
+      typeNext();
     });
   };
 

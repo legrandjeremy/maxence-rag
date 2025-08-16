@@ -22,6 +22,9 @@ export function handleApiError(error: unknown): string {
   if (err.response?.status === 404) {
     return 'Ressource introuvable.';
   }
+  if (err.response?.status === 402) {
+    return 'Paiement requis pour continuer cette conversation.';
+  }
 
   if (err.response?.status === 401) {
     return 'Authentification requise.';
