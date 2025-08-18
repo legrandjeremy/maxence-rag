@@ -713,7 +713,7 @@ Luna: [/INST]`;
         prompt: text,
         max_gen_len: 120,   // Longer to prevent sentence cutoffs
         temperature: 0.05,  // EXTREME low temperature for precise, deterministic responses
-        top_p: 0.7,        // Lower for more focused vocabulary
+        top_p: 0.95,        // Lower for more focused vocabulary
         stop: stopSequences
       };
     }
@@ -723,7 +723,7 @@ Luna: [/INST]`;
       prompt: text,
       max_tokens: 120,   // Longer to prevent sentence cutoffs
       temperature: 0.05, // EXTREME low temperature for precise, deterministic responses
-      top_p: 0.7,       // Lower for more focused vocabulary
+      top_p: 0.95,       // Lower for more focused vocabulary
       stop: stopSequences
     };
   }

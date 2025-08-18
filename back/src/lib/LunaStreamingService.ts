@@ -47,7 +47,7 @@ export class LunaStreamingService {
   private callbacks: StreamingCallbacks;
   
   // Claude v4.1 Opus with reasoning mode
-  private readonly MODEL_ID = 'anthropic.claude-3-5-sonnet-20241022-v2:0'; // Update to v4.1 when available
+  private readonly MODEL_ID = 'arn:aws:bedrock:us-east-1:033439678491:inference-profile/us.anthropic.claude-opus-4-1-20250805-v1:0'; // Update to v4.1 when available
   private readonly KNOWLEDGE_BASE_ID = process.env.BEDROCK_KNOWLEDGE_BASE_ID;
 
   constructor(callbacks: StreamingCallbacks) {
@@ -282,9 +282,9 @@ ${this.getStageSpecificPrompt(stage)}`;
         messages,
         system,
         inferenceConfig: {
-          maxTokens: 300, // Keep Luna responses concise
+          maxTokens: 15001, // Keep Luna responses concise
           temperature: useReasoning ? 1.0 : 0.05, // Reasoning requires temp 1.0
-          topP: 0.7
+          topP: 0.95
         }
       };
 

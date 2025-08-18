@@ -11,7 +11,7 @@
           </div>
           <div class="brand-text">
             <h1 class="brand-title">Luna</h1>
-            <p class="brand-subtitle">Oracle des Lignes Cachées • Streaming v4.1</p>
+            <p class="brand-subtitle">Oracle des Lignes Cachées</p>
           </div>
         </div>
         
@@ -92,7 +92,7 @@
               />
             </div>
 
-            <div class="setting-group">
+            <div class="setting-group hidden">
               <h6 class="setting-title">Connexion WebSocket</h6>
               
               <q-input
@@ -149,7 +149,7 @@
 
       <!-- Conversation Stats (when available) -->
       <div v-if="conversationStats" class="stats-footer">
-        <div class="stats-container">
+        <div class="stats-container hidden">
           <div class="stat-item">
             <q-icon name="chat_bubble" class="stat-icon" />
             <span class="stat-text">{{ conversationStats.totalMessages }} messages</span>
@@ -227,7 +227,7 @@ const connectionStatusText = computed(() => {
   switch (connectionStatus.value) {
     case 'connected': return 'Connexion mystique établie';
     case 'connecting': return 'Établissement de la connexion...';
-    case 'error': return 'Perturbation dans les énergies';
+    case 'error': return 'Erreur de connexion avec Luna';
     default: return 'En attente de connexion';
   }
 });
@@ -249,14 +249,7 @@ const isProcessing = computed(() =>
 const handleConnectionChange = (status: string) => {
   connectionStatus.value = status;
   
-  if (status === 'connected') {
-    $q.notify({
-      type: 'positive',
-      message: '🌙 Connexion avec Luna établie',
-      position: 'top',
-      timeout: 2000
-    });
-  } else if (status === 'error') {
+  if (status === 'error') {
     $q.notify({
       type: 'negative',
       message: '⚠️ Problème de connexion avec Luna',

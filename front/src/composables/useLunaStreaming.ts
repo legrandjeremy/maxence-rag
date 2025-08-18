@@ -4,6 +4,7 @@ import {
   lunaWebSocketService
   // LunaStreamingStatus  // Commented out - not used in this file
 } from '../services/lunaWebSocketService';
+import { useAuthStore } from '../stores/authStore'; // 🚀 For payment integration
 
 export interface LunaMessage {
   id: string;
@@ -45,9 +46,19 @@ export function useLunaStreaming() {
   const messages = ref<LunaMessage[]>([]);
   const conversationHistory = ref<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
 
+  // 🚀 Timer and Payment State (inspired by GuestChatWidget)
+  const conversationStartedAt = ref<number | null>(null);
+  const isBlockedForPayment = ref(false);
+  const isPaid = ref(false);
+  const freeSecondsTotal = 1 * 60; // 1 minute free trial
+  const remainingSeconds = ref<number>(freeSecondsTotal);
+  let timerId: number | null = null;
+
   // Computed properties
   const canSendMessage = computed(() => 
-    state.connectionStatus === 'connected' && !state.isStreaming
+    state.connectionStatus === 'connected' && 
+    !state.isStreaming && 
+    (!isBlockedForPayment.value || isPaid.value) // 🚀 Block if payment required
   );
 
   const isProcessing = computed(() => 
@@ -56,6 +67,24 @@ export function useLunaStreaming() {
 
   const hasError = computed(() => 
     state.error !== null
+  );
+
+  // 🚀 Timer computed properties
+  const formattedRemaining = computed(() => {
+    const secs = remainingSeconds.value;
+    const mm = Math.floor(secs / 60).toString().padStart(2, '0');
+    const ss = Math.floor(secs % 60).toString().padStart(2, '0');
+    return `Temps gratuit: ${mm}:${ss}`;
+  });
+
+  const shouldShowTimer = computed(() => 
+    !isPaid.value && 
+    !isBlockedForPayment.value && 
+    conversationStartedAt.value !== null
+  );
+
+  const shouldShowPaymentBanner = computed(() => 
+    isBlockedForPayment.value && !isPaid.value
   );
 
   // Generate unique message ID
@@ -138,6 +167,93 @@ export function useLunaStreaming() {
     state.error = null;
   };
 
+  // 🚀 Timer and Payment Functions (inspired by GuestChatWidget)
+  const startConversationTimer = () => {
+    if (!conversationStartedAt.value) {
+      conversationStartedAt.value = Date.now();
+      console.log('🌙 Luna: Starting conversation timer (1 minute free)');
+      
+      // Tick every second to update remaining time
+      const tick = () => {
+        if (!conversationStartedAt.value) return;
+        
+        // If paid, stop the timer permanently
+        if (isPaid.value) {
+          if (timerId) {
+            window.clearInterval(timerId);
+            timerId = null;
+          }
+          return;
+        }
+        
+        const elapsedSec = Math.floor((Date.now() - conversationStartedAt.value) / 1000);
+        remainingSeconds.value = Math.max(0, freeSecondsTotal - elapsedSec);
+        
+        if (remainingSeconds.value <= 0 && !isPaid.value) {
+          console.log('🌙 Luna: Free time expired, blocking for payment');
+          isBlockedForPayment.value = true;
+          if (timerId) {
+            window.clearInterval(timerId);
+            timerId = null;
+          }
+        }
+      };
+      
+      tick();
+      timerId = window.setInterval(tick, 1000);
+    }
+  };
+
+  const openPayment = async () => {
+    try {
+      // Get user email from localStorage
+      const userEmail = localStorage.getItem('guestChat_userEmail');
+      
+      if (!userEmail) {
+        console.error('🚨 Luna: No email available for payment');
+        return;
+      }
+
+      console.log('🌙 Luna: Opening Stripe payment for €5');
+      
+      const successUrl = `${window.location.origin}/luna-streaming?payment=success`;
+      const cancelUrl = `${window.location.origin}/luna-streaming?payment=cancel`;
+      
+      const response = await fetch(process.env.API_URL + '/api/payments/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chatId: `luna_${Date.now()}`, // Generate chat ID for Luna
+          email: userEmail,
+          successUrl,
+          cancelUrl
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.url) {
+        window.open(data.url, 'stripe_checkout', 'width=480,height=720');
+      }
+    } catch (error) {
+      console.error('🚨 Luna: Failed to open payment:', error);
+    }
+  };
+
+  const handlePaymentSuccess = () => {
+    console.log('🌙 Luna: Payment successful, removing restrictions');
+    isPaid.value = true;
+    isBlockedForPayment.value = false;
+    
+    // Stop the timer since payment is confirmed
+    if (timerId) {
+      window.clearInterval(timerId);
+      timerId = null;
+    }
+  };
+
   // Reset conversation
   const resetConversation = () => {
     messages.value = [];
@@ -163,16 +279,27 @@ export function useLunaStreaming() {
     try {
       console.log('🌙 Sending message to Luna:', content.substring(0, 50) + '...');
       
+      // 🚀 Check if blocked for payment
+      if (isBlockedForPayment.value && !isPaid.value) {
+        state.error = 'La session gratuite est terminée. Veuillez régler 5 € pour continuer.';
+        return;
+      }
+      
+      // 🚀 Start timer on first message
+      if (!conversationStartedAt.value) {
+        startConversationTimer();
+      }
+      
       // Clear any previous errors
       clearError();
       
-      // Add user message
-      addUserMessage(content);
+      // 🚀 DUPLICATION FIX: Add user message to UI immediately (but not to conversationHistory for backend)
+      const userMessage = addUserMessage(content);
       
-      // Prepare streaming request
+      // Prepare streaming request with CURRENT conversationHistory (excludes the message we just added)
       const request: LunaStreamingRequest = {
         content,
-        conversationHistory: conversationHistory.value,
+        conversationHistory: conversationHistory.value.slice(0, -1), // Exclude the message we just added
         userEmail: options.userEmail,
         ...(options.chatId && { chatId: options.chatId }),
         useReasoning: options.useReasoning || false,
@@ -208,6 +335,8 @@ export function useLunaStreaming() {
             price: `$${result.price.toFixed(4)}`
           });
 
+          // 🚀 User message already in UI, just finalize the assistant response
+
           // Final update to message
           updateLastAssistantMessage(
             result.completion,
@@ -227,6 +356,9 @@ export function useLunaStreaming() {
 
         onError: (error: string) => {
           console.error('🚨 Luna streaming error:', error);
+          
+          // 🚀 User message already in UI, just handle the error
+          
           state.error = error;
           state.isStreaming = false;
           state.isReasoning = false;
@@ -354,6 +486,15 @@ export function useLunaStreaming() {
     canSendMessage,
     isProcessing,
     hasError,
+    formattedRemaining,
+    shouldShowTimer,
+    shouldShowPaymentBanner,
+    
+    // Timer & Payment State
+    conversationStartedAt,
+    isBlockedForPayment,
+    isPaid,
+    remainingSeconds,
     
     // Methods
     sendMessageToLuna,
@@ -364,6 +505,9 @@ export function useLunaStreaming() {
     checkConnection,
     testConnection,
     getConversationSummary,
+    startConversationTimer,
+    openPayment,
+    handlePaymentSuccess,
     loadConversation
   };
 }

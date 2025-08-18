@@ -1,12 +1,12 @@
 <template>
   <div class="luna-streaming-chat">
     <!-- Chat Header with Luna Branding -->
-    <div class="chat-header">
+    <div class="chat-header hidden">
       <div class="luna-avatar">
         <div class="mystical-aura"></div>
         <span class="luna-symbol">🌙</span>
       </div>
-      <div class="header-info">
+      <div class="header-info hidden">
         <h2 class="luna-title">Luna - Oracle des Lignes Cachées</h2>
         <div class="connection-status" :class="connectionStatusClass">
           <span class="status-indicator"></span>
@@ -15,7 +15,7 @@
       </div>
       
       <!-- Reasoning Mode Toggle -->
-      <div class="controls">
+      <div class="controls hidden">
         <label class="reasoning-toggle">
           <input 
             type="checkbox" 
@@ -57,7 +57,7 @@
             <div v-if="message.reasoning" class="reasoning-section">
               <div class="reasoning-header">
                 <span class="reasoning-icon">🧠</span>
-                <span class="reasoning-label">Réflexion Mystique de Luna</span>
+                <span class="reasoning-label">Réflexion Mystique de Luna (Debug du mode Réflexion)</span>
                 <button 
                   class="reasoning-toggle-btn"
                   @click="toggleReasoning(message.id)"
@@ -84,12 +84,6 @@
               <!-- Message Metadata -->
               <div v-if="message.isComplete" class="message-metadata">
                 <span class="message-time">{{ formatTime(message.timestamp) }}</span>
-                <span v-if="message.tokens" class="token-count">
-                  {{ message.tokens.input + message.tokens.output }} tokens
-                </span>
-                <span v-if="message.price" class="price">
-                  ${{ message.price.toFixed(4) }}
-                </span>
               </div>
             </div>
           </div>
@@ -98,20 +92,20 @@
 
       <!-- Streaming Indicators -->
       <div v-if="isProcessing" class="streaming-indicators">
-        <div v-if="state.isReasoning && currentReasoning" class="current-reasoning">
+        <div v-if="state.isReasoning && currentReasoning && !message.isStreaming" class="current-reasoning">
           <div class="reasoning-header active">
             <span class="reasoning-icon pulsing">🧠</span>
-            <span class="reasoning-label">Luna réfléchit...</span>
+            <span class="reasoning-label">Luna est en train d'écrire...</span>
           </div>
-          <div class="reasoning-preview">
+          <div class="reasoning-preview hidden">
             <pre class="reasoning-text">{{ currentReasoning }}</pre>
             <span class="thinking-dots">...</span>
           </div>
         </div>
         
-        <div v-if="state.isStreaming" class="luna-thinking">
+        <div v-if="state.isStreaming && !isProcessing" class="luna-thinking">
           <span class="luna-symbol-small pulsing">🌙</span>
-          <span class="thinking-text">Luna partage ses visions mystiques...</span>
+          <span class="thinking-text">Luna va vous répondre dans quelques instants...</span>
           <div class="mystical-dots">
             <span></span><span></span><span></span>
           </div>
@@ -144,18 +138,37 @@
         
         <button 
           @click="sendMessage"
-          :disabled="!canSendMessage || !currentInput.trim()"
+          :disabled="!canSendMessage || !currentInput.trim() || isSending"
           class="send-button"
-          :class="{ sending: isProcessing }"
+          :class="{ sending: isProcessing || isSending }"
         >
           <span v-if="!isProcessing">Consulter Luna ✨</span>
           <span v-else>Connexion mystique...</span>
         </button>
       </div>
       
+      <!-- 🚀 Timer Display -->
+      <div v-if="shouldShowTimer" class="timer-display">
+        <q-badge color="primary" outline>
+          {{ formattedRemaining }}
+        </q-badge>
+      </div>
+
+      <!-- 🚀 Payment Banner -->
+      <div v-if="shouldShowPaymentBanner" class="payment-banner">
+        <div class="payment-content">
+          <div class="payment-text">
+            ✨ La session gratuite est terminée. Réglez 5 € pour continuer votre consultation avec Luna.
+          </div>
+          <button @click="openPayment" class="payment-button">
+            Payer 5 € ✨
+          </button>
+        </div>
+      </div>
+      
       <!-- Input Helper Text -->
-      <div class="input-helper">
-        <span v-if="useReasoning" class="reasoning-hint">
+      <div class="input-helper hide">
+        <span v-if="useReasoning" class="reasoning-hint hidden">
           🧠 Mode réflexion activé - Luna prendra le temps de réfléchir profondément
         </span>
         <span v-else class="normal-hint">
@@ -192,7 +205,7 @@ const emit = defineEmits<{
 }>();
 
 // Composables
-const { 
+const {
   state, 
   messages, 
   canSendMessage, 
@@ -204,7 +217,15 @@ const {
   disconnect,
   testConnection,
   getConversationSummary,
-  loadConversation
+  loadConversation,
+  // 🚀 Timer and Payment
+  formattedRemaining,
+  shouldShowTimer,
+  shouldShowPaymentBanner,
+  isBlockedForPayment,
+  isPaid,
+  openPayment,
+  handlePaymentSuccess
 } = useLunaStreaming();
 
 const authStore = useAuthStore();
@@ -212,6 +233,7 @@ const authStore = useAuthStore();
 // Reactive refs
 const currentInput = ref('');
 const useReasoning = ref(true);
+const isSending = ref(false); // 🚀 Local guard against duplicate sends
 const messagesContainer = ref<HTMLElement>();
 const messageInput = ref<HTMLTextAreaElement>();
 const expandedReasoning = ref(new Set<string>());
@@ -251,25 +273,32 @@ const currentReasoning = computed(() => state.currentReasoning);
 
 // Methods
 const sendMessage = async () => {
-  if (!currentInput.value.trim() || !canSendMessage.value) return;
-
-  // Check if we have a user email
-  const userEmail = authStore.user?.email || localStorage.getItem('luna_guest_email');
-  
-  if (!userEmail) {
-    // Prompt for email if not available
-    const email = await promptForEmail();
-    if (!email) {
-      return; // User cancelled
-    }
-    localStorage.setItem('luna_guest_email', email);
+  // 🚀 DUPLICATE PREVENTION: Check multiple conditions
+  if (!currentInput.value.trim() || !canSendMessage.value || isProcessing.value || isSending.value) {
+    return;
   }
 
-  const content = currentInput.value.trim();
-  currentInput.value = '';
-  autoResize();
+  // 🚀 Set local sending flag immediately to prevent race conditions
+  isSending.value = true;
 
   try {
+    // Check if we have a user email
+    const userEmail = authStore.user?.email || localStorage.getItem('luna_guest_email');
+    
+    if (!userEmail) {
+      // Prompt for email if not available
+      const email = await promptForEmail();
+      if (!email) {
+        isSending.value = false; // 🚀 Reset flag if user cancelled
+        return; // User cancelled
+      }
+      localStorage.setItem('luna_guest_email', email);
+    }
+
+    const content = currentInput.value.trim();
+    currentInput.value = '';
+    autoResize();
+
     await sendMessageToLuna(content, {
       useReasoning: useReasoning.value,
       enableKnowledge: true,
@@ -295,6 +324,9 @@ const sendMessage = async () => {
 
   } catch (error) {
     console.error('Failed to send message:', error);
+  } finally {
+    // 🚀 Always reset sending flag, even on error
+    isSending.value = false;
   }
 };
 
@@ -334,7 +366,7 @@ const formatTime = (timestamp: number): string => {
 };
 
 const formatLunaResponse = (content: string): string => {
-  if (!content) return '';
+  if (!content) return 'Luna va vous répondre dans quelques instants...';
   
   // Add mystical formatting to Luna's responses
   return content
@@ -378,6 +410,19 @@ onMounted(async () => {
     });
   }
 
+  // 🚀 Add payment success listener (inspired by GuestChatWidget)
+  const handlePaymentMessage = (event: MessageEvent) => {
+    if (event.data.type === 'payment-success') {
+      console.log('🌙 Luna: Payment success detected');
+      handlePaymentSuccess();
+    }
+  };
+  
+  window.addEventListener('message', handlePaymentMessage);
+  
+  // Store reference for cleanup
+  (window as any).lunaPaymentHandler = handlePaymentMessage;
+
   // Test WebSocket connection on mount
   try {
     console.log('🌙 Testing Luna WebSocket connection on mount...');
@@ -416,11 +461,19 @@ onMounted(async () => {
 
 onUnmounted(() => {
   disconnect();
+  
+  // 🚀 Cleanup payment listener
+  if ((window as any).lunaPaymentHandler) {
+    window.removeEventListener('message', (window as any).lunaPaymentHandler);
+    delete (window as any).lunaPaymentHandler;
+  }
+  
   console.log('🌙 Luna Streaming Chat cleanup');
 });
 
 // Watch for connection status changes
 import { watch } from 'vue';
+import { route } from 'quasar/wrappers';
 watch(() => state.connectionStatus, (status) => {
   emit('connection-changed', status);
 });
@@ -861,6 +914,56 @@ watch(() => state.connectionStatus, (status) => {
 
 .reasoning-hint {
   color: #c084fc;
+}
+
+/* 🚀 Timer Display */
+.timer-display {
+  margin-top: 0.75rem;
+  text-align: center;
+}
+
+/* 🚀 Payment Banner */
+.payment-banner {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, #f3e8ff, #e0e7ff);
+  border: 2px solid #c084fc;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(192, 132, 252, 0.2);
+}
+
+.payment-content {
+  text-align: center;
+}
+
+.payment-text {
+  color: #5b21b6;
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+  font-weight: 500;
+}
+
+.payment-button {
+  background: linear-gradient(135deg, #7c3aed, #c084fc);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
+}
+
+.payment-button:hover {
+  background: linear-gradient(135deg, #6d28d9, #a855f7);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);
+}
+
+.payment-button:active {
+  transform: translateY(0);
 }
 
 /* Animations */
