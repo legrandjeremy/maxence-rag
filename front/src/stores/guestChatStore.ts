@@ -53,7 +53,8 @@ export const useGuestChatStore = defineStore('guestChat', () => {
   const userEmail = ref<string>('');
   const conversationStartedAt = ref<number | null>(null);
   const isBlockedForPayment = ref(false);
-  const freeSecondsTotal = 5 * 60;
+  const isPaid = ref(false);
+  const freeSecondsTotal = 1 * 60;
   const remainingSeconds = ref<number>(freeSecondsTotal);
   let timerId: number | null = null;
 
@@ -83,9 +84,19 @@ export const useGuestChatStore = defineStore('guestChat', () => {
       // Tick every second to update remaining
       const tick = () => {
         if (!conversationStartedAt.value) return;
+        
+        // If paid, stop the timer permanently
+        if (isPaid.value) {
+          if (timerId) {
+            window.clearInterval(timerId);
+            timerId = null;
+          }
+          return;
+        }
+        
         const elapsedSec = Math.floor((Date.now() - conversationStartedAt.value) / 1000);
         remainingSeconds.value = Math.max(0, freeSecondsTotal - elapsedSec);
-        if (remainingSeconds.value <= 0) {
+        if (remainingSeconds.value <= 0 && !isPaid.value) {
           isBlockedForPayment.value = true;
           if (timerId) window.clearInterval(timerId);
         }
@@ -152,7 +163,7 @@ export const useGuestChatStore = defineStore('guestChat', () => {
 
   const sendMessage = async (chatId: string, content: string, email: string): Promise<boolean> => {
     if (!content.trim()) return false;
-    if (isBlockedForPayment.value) {
+    if (isBlockedForPayment.value && !isPaid.value) {
       error.value = 'La session gratuite est terminée. Veuillez régler 5 € pour continuer.';
       return false;
     }
@@ -288,6 +299,7 @@ export const useGuestChatStore = defineStore('guestChat', () => {
       
       // Update local state based on backend database state
       if (status.isPaid) {
+        isPaid.value = true;
         isBlockedForPayment.value = false;
         // Stop the timer since payment is confirmed
         if (timerId) {
@@ -334,11 +346,11 @@ export const useGuestChatStore = defineStore('guestChat', () => {
         }
         
         // Poll every 2 seconds
-        setTimeout(poll, 2000);
+        setTimeout(() => { void poll(); }, 2000);
       };
       
       // Start polling immediately
-      poll();
+      void poll();
     });
   };
 
@@ -395,7 +407,12 @@ export const useGuestChatStore = defineStore('guestChat', () => {
       error.value = '✅ Paiement reçu ! Vérification en cours...';
       
       // Immediately check once  
-      const isPaid = await checkPaymentStatus(currentChat.value!.id, userEmail.value!);
+      if (!currentChat.value?.id || !userEmail.value) {
+        console.error('Missing chat or email for payment verification');
+        return;
+      }
+      
+      const isPaid = await checkPaymentStatus(currentChat.value.id, userEmail.value);
       
       if (isPaid) {
         console.log('Payment confirmed immediately');
@@ -407,7 +424,7 @@ export const useGuestChatStore = defineStore('guestChat', () => {
       console.log('Payment not immediately confirmed, starting polling...');
       error.value = '⏳ Confirmation du paiement en cours... Merci de patienter.';
       
-      const confirmed = await pollPaymentStatus(currentChat.value!.id, userEmail.value!, 10);
+      const confirmed = await pollPaymentStatus(currentChat.value.id, userEmail.value, 10);
       
       if (confirmed) {
         clearError();
@@ -422,6 +439,13 @@ export const useGuestChatStore = defineStore('guestChat', () => {
     }
   };
 
+  const clearUserData = () => {
+    // Clear localStorage data
+    localStorage.removeItem('guestChat_currentChat');
+    localStorage.removeItem('guestChat_userEmail');
+    console.log('User data cleared from localStorage');
+  };
+
   const reset = () => {
     currentChat.value = null;
     currentMessages.value = [];
@@ -429,13 +453,13 @@ export const useGuestChatStore = defineStore('guestChat', () => {
     error.value = null;
     conversationStartedAt.value = null;
     isBlockedForPayment.value = false;
+    isPaid.value = false;
     remainingSeconds.value = freeSecondsTotal;
     if (timerId) window.clearInterval(timerId);
     timerId = null;
     
     // Clear localStorage
-    localStorage.removeItem('guestChat_currentChat');
-    localStorage.removeItem('guestChat_userEmail');
+    clearUserData();
   };
 
   return {
@@ -450,6 +474,7 @@ export const useGuestChatStore = defineStore('guestChat', () => {
     userEmail,
     conversationStartedAt,
     isBlockedForPayment,
+    isPaid,
     remainingSeconds,
     
     // Computed
@@ -468,6 +493,7 @@ export const useGuestChatStore = defineStore('guestChat', () => {
     pollPaymentStatus,
     handlePaymentSuccess,
     recoverStateFromStorage,
+    clearUserData,
     reset
   };
 }); 

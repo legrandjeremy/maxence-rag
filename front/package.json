@@ -1,8 +1,8 @@
 {
   "name": "front",
   "version": "0.0.1",
-  "description": "Maxence Chat",
-  "productName": "Maxence Chat",
+  "description": "Luna",
+  "productName": "Luna",
   "author": "LEGRAND Jeremy",
   "type": "module",
   "private": true,

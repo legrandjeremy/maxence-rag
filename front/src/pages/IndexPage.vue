@@ -1,7 +1,7 @@
 <template>
   <q-page class="flex flex-center">
     <div class="text-center">
-      <h1 class="text-h3 q-mb-md">Maxence Chat</h1>
+      <h1 class="text-h3 q-mb-md">Luna</h1>
       
       <!-- Player Management Navigation Test -->
       <div v-if="authStore.hasAccessToPlayerManagement" class="q-mt-lg">

@@ -125,13 +125,23 @@
           <q-btn flat dense size="sm" icon="close" @click="guestChatStore.clearError()" />
         </div>
 
-        <div class="row items-center q-mt-sm" v-if="!guestChatStore.isBlockedForPayment && guestChatStore.conversationStartedAt">
+        <!-- Premium access indicator when paid -->
+        <div class="row items-center q-mt-sm" v-if="guestChatStore.isPaid">
+          <q-badge color="positive" class="premium-badge">
+            <q-icon name="verified" class="q-mr-xs" />
+            Accès Premium Activé
+          </q-badge>
+        </div>
+
+        <!-- Free time remaining (only if not paid) -->
+        <div class="row items-center q-mt-sm" v-if="!guestChatStore.isPaid && !guestChatStore.isBlockedForPayment && guestChatStore.conversationStartedAt">
           <q-badge color="primary" outline>
             {{ formattedRemaining }}
           </q-badge>
         </div>
 
-        <q-banner v-if="guestChatStore.isBlockedForPayment" class="q-mt-md" rounded dense inline-actions>
+        <!-- Payment required banner (only if not paid) -->
+        <q-banner v-if="guestChatStore.isBlockedForPayment && !guestChatStore.isPaid" class="q-mt-md" rounded dense inline-actions>
           <div class="text-body2">La session gratuite est terminée. Réglez 5 € pour continuer.</div>
           <template v-slot:action>
             <q-btn color="primary" label="Payer 5 €" @click="openPayment" flat />
@@ -353,6 +363,26 @@ window.addEventListener('message', (event) => {
   } else if (event.data.type === 'payment-success') {
     // Verify payment success with backend database
     void guestChatStore.handlePaymentSuccess();
+  }
+});
+
+// Add warning when trying to leave page with active conversation
+window.addEventListener('beforeunload', (event) => {
+  // Only show warning if there's an active conversation
+  if (guestChatStore.currentChat && guestChatStore.currentMessages.length > 1) {
+    // Modern browsers show a generic message, not custom text
+    // This will trigger the browser's built-in "Leave page?" dialog
+    event.preventDefault();
+    event.returnValue = ''; // Modern browsers ignore custom messages
+  }
+});
+
+// Clear data only when page actually unloads (user confirmed leaving)
+window.addEventListener('unload', () => {
+  // Only clear if there's data to clear
+  if (guestChatStore.currentChat && guestChatStore.currentMessages.length > 1) {
+    guestChatStore.clearUserData();
+    console.log('Chat data cleared on page unload');
   }
 });
 
@@ -589,6 +619,25 @@ const formattedRemaining = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.premium-badge {
+  background: linear-gradient(135deg, #4caf50, #66bb6a) !important;
+  color: white !important;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 20px;
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+  animation: premiumGlow 2s ease-in-out infinite alternate;
+}
+
+@keyframes premiumGlow {
+  from {
+    box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+  }
+  to {
+    box-shadow: 0 4px 16px rgba(76, 175, 80, 0.5);
+  }
 }
 
 .typing-indicator {

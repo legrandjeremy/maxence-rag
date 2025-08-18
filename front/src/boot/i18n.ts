@@ -5,7 +5,7 @@ import { Cookies } from 'quasar'
 
 export default defineBoot(({ app }) => {
   // Determine default locale from cookie or browser
-  let initialLocale = Cookies.get('locale') as string || null
+  let initialLocale = Cookies.get('locale') || null
   if (!initialLocale) {
     initialLocale = 'fr-FR'
   }

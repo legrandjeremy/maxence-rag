@@ -70,6 +70,11 @@ export class BedrockService {
       return ConversationStage.NAME_REQUEST;
     }
     
+    // If user provided invalid name (like "1234"), keep asking for proper name
+    if (userMessageCount === 2 && this.isInvalidName(userMessages[0]?.content || '')) {
+      return ConversationStage.NAME_REQUEST;
+    }
+    
     if (userMessageCount <= 2) {
       return ConversationStage.FEELING_INQUIRY;
     }
@@ -94,11 +99,228 @@ export class BedrockService {
    */
   private hasUserProvidedName(userMessages: Array<{ content: string }>): boolean {
     const firstMessage = userMessages[0]?.content.toLowerCase() || '';
+    
+    // CRITICAL: Reject obvious non-names
+    if (this.isInvalidName(firstMessage)) {
+      return false;
+    }
+    
+    // SPECIAL CASE: Handle "name, emotion" pattern (e.g., "jeremy, des angoisses")
+    if (/^[a-zA-Z]+\s*,\s*des?\s+[a-zA-Z]+/.test(firstMessage)) {
+      return true; // This is name + emotion, count as name provided
+    }
+    
     // Simple name detection - look for common name patterns
     return firstMessage.length < 50 && (
       /je m'appelle|mon nom|je suis|c'est/.test(firstMessage) ||
       (firstMessage.split(' ').length <= 3 && !/comment|pourquoi|quoi|où|quand/.test(firstMessage))
     );
+  }
+
+  /**
+   * Check if input is an invalid name (numbers, test inputs, etc.)
+   */
+  private isInvalidName(input: string): boolean {
+    const trimmed = input.trim();
+    
+    // Reject pure numbers
+    if (/^\d+$/.test(trimmed)) return true;
+    
+    // Reject obvious test inputs
+    if (/^(test|1234|0000|9999|aaaa|bbbb|xxx|abc|123)$/i.test(trimmed)) return true;
+    
+    // Reject very short or very long inputs
+    if (trimmed.length < 2 || trimmed.length > 30) return true;
+    
+    // Reject inputs with mostly numbers or special characters
+    if (/[\d@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]{3,}/.test(trimmed)) return true;
+    
+    return false;
+  }
+
+  /**
+   * Extract user name from conversation history
+   */
+  private extractUserName(conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>): string | null {
+    if (!conversationHistory || conversationHistory.length === 0) return null;
+    
+    const firstUserMessage = conversationHistory.find(msg => msg.role === 'user')?.content || '';
+    
+    // Handle "name, emotion" pattern (e.g., "jeremy, des angoisses")
+    const nameEmotionMatch = firstUserMessage.match(/^([a-zA-ZÀ-ÿ]+)\s*,\s*des?\s+[a-zA-ZÀ-ÿ]+/);
+    if (nameEmotionMatch) {
+      return nameEmotionMatch[1].toLowerCase();
+    }
+    
+    // Handle single name
+    const words = firstUserMessage.trim().split(/\s+/);
+    if (words.length === 1 && words[0].length > 1 && /^[a-zA-ZÀ-ÿ]+$/.test(words[0])) {
+      return words[0].toLowerCase();
+    }
+    
+    return null;
+  }
+
+  /**
+   * Build dynamic stop sequences based on conversation context
+   */
+  private buildDynamicStopSequences(conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>): string[] {
+    const baseStopSequences = [
+      'Personne:',                                          // ULTRA CRITICAL: prevents fake user responses
+      'Luna:',                                              // CRITICAL: prevents Luna labeling herself
+      'LUNA',                                               // CRITICAL: prevents all caps Luna labels
+      'Qu\'est-ce que tu ressens en ce moment',            // CRITICAL: prevents repetitive questions
+      'Tu es là pour',                                      // CRITICAL: prevents mission description
+      'que ressens-tu maintenant',                          // CRITICAL: prevents question loops
+      ':',                                                  // MEGA CRITICAL: prevents ANY fake dialogue
+      'Tu es 1234',                                         // CRITICAL: prevents treating numbers as names
+      'Tu es test',                                         // CRITICAL: prevents treating test inputs as names
+      'tu ressens de la'                                    // CRITICAL: prevents repetitive emotion statements
+    ];
+    
+    const userName = this.extractUserName(conversationHistory);
+    
+    if (userName) {
+      // Add dynamic name-specific stop sequences
+      const nameStopSequences = [
+        `${userName}:`,                                     // ULTRA CRITICAL: prevents specific name fake responses
+        `${userName.charAt(0).toUpperCase() + userName.slice(1)}:`, // Capitalized version
+        `\n${userName}`,                                    // CRITICAL: prevents user name echo patterns
+        `\n${userName.charAt(0).toUpperCase() + userName.slice(1)}` // Capitalized echo
+      ];
+      
+      // Merge and prioritize, keeping within Bedrock's 10 limit
+      return [...nameStopSequences, ...baseStopSequences].slice(0, 10);
+    }
+    
+    return baseStopSequences.slice(0, 10);
+  }
+
+  /**
+   * Build dynamic cleaning patterns based on conversation context
+   */
+  private buildDynamicCleaningPatterns(conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>): RegExp[] {
+    const basePatterns = [
+      /Tu peux répondre en utilisant[\s\S]*?:/gi,
+      /Utilise le modèle de réponse suivant[\s\S]*?:/gi,
+      /Réponds maintenant en utilisant[\s\S]*?ci-dessus/gi,
+      /Exemple\s*:[\s\S]*?nature\s*\?"/gi,
+      /\(Remarque\s*:[\s\S]*?\)/gi,
+      /Modèle de réponse[\s\S]*?:/gi,
+      /Tu dois[\s\S]*?format/gi,
+      /Suis ces étapes[\s\S]*?:/gi,
+      /Tu sens une énergie[\s\S]*?contactée\./gi,  // Remove third person energy descriptions
+      /Tu murmures[\s\S]*?:/gi,                    // Remove process descriptions
+      /Tu écoutes attentivement[\s\S]*?\./gi,      // Remove action descriptions
+      /Tu ressens l'émotion[\s\S]*?\./gi,          // Remove emotion descriptions
+      /Réponse\s*:[\s\S]*$/gi,                     // Remove multiple response patterns
+      /\[\/INST\][\s\S]*$/gi,                      // Remove everything after [/INST]
+      /\[INST\][\s\S]*$/gi,                        // Remove everything after [INST]
+      /\b[A-Z][a-zàâäéèêëîïôöùûüç]*\s*:[\s\S]*$/gi,  // CRITICAL: Remove ANY name + colon (fake responses)
+      /Luna\s*:[\s\S]*$/gi,                        // CRITICAL: Remove Luna self-labeling
+      /(Remi|Jean|Louis|Personne|Juli)\s*:[\s\S]*$/gi, // CRITICAL: Remove specific known fake responses
+      // ULTRA CRITICAL: Remove personal detail hallucinations
+      /tu es un homme de \d+[\s\S]*/gi,            // Age inventions
+      /tu es marié[\s\S]*/gi,                      // Marital status inventions
+      /tu as un enfant de[\s\S]*/gi,               // Children inventions
+      /tu es un(e)? \w+, tu as[\s\S]*/gi,          // Profession + other details chains
+      /tu as été frappé par[\s\S]*/gi,             // Tragedy inventions
+      // CRITICAL: Remove persona/mission leaks
+      /Tu es là pour révéler[\s\S]*/gi,            // Mission description to user
+      /révéler l'invisible et réveiller[\s\S]*/gi, // Mission phrase leak
+      /réveiller le chemin de vie[\s\S]*/gi,       // Mission continuation
+      /à travers les signes cachés[\s\S]*/gi,      // Mission ending
+      // CRITICAL: Remove geographic/conceptual name confusions
+      /Tu es [A-Z][a-z]+, ville[\s\S]*/gi,        // Geographic city descriptions
+      /ville lumière, ville de[\s\S]*/gi,         // Paris-specific descriptions
+      /capitale de[\s\S]*/gi,                     // Capital city descriptions
+      /[A-Z][a-z]+, la ville[\s\S]*/gi,           // City name patterns
+      // CRITICAL: Remove emotion inventions
+      /tu te sens triste[\s\S]*/gi,               // Sadness invention
+      /tu es triste[\s\S]*/gi,                    // Direct sadness claim
+      /tu te sens (heureux|en colère|anxieux|stressé)[\s\S]*/gi, // Other emotion inventions
+      /et tu te sens[\s\S]*/gi,                   // Emotion assumption patterns
+      // CRITICAL: Remove repetitive conversation patterns
+      /Qu'est-ce que tu ressens en ce moment[\s\S]*/gi, // Repetitive question
+      /que ressens-tu maintenant[\s\S]*/gi,       // Question loop prevention
+      /tu ressens de la (peine|tristesse|joie)[\s\S]*/gi, // Repetitive emotion statements
+      /Tu es [A-Z][a-z]+, tu ressens[\s\S]*/gi,   // Name + emotion repetition pattern
+      // ULTRA CRITICAL: Remove number/test name responses
+      /Tu es 1234[\s\S]*/gi,                      // Number name responses
+      /Tu es \d+[\s\S]*/gi,                       // Any number name responses
+      /Tu es test[\s\S]*/gi,                      // Test name responses
+      /Tu es abc[\s\S]*/gi,                       // Test sequence responses
+      // CRITICAL: Remove caps Luna labels and fake dialogue
+      /LUNA[\s\S]*/gi,                            // All caps Luna removal
+      /Personne[\s\S]*/gi                         // Personne fake responses
+    ];
+    
+    const userName = this.extractUserName(conversationHistory);
+    const userMessage = conversationHistory?.find(msg => msg.role === 'user')?.content || '';
+    
+    if (userName) {
+      // Add dynamic name-specific patterns
+      const namePatterns = [
+        new RegExp(`${userName}:\\s*[\\s\\S]*`, 'gi'),                              // jeremy: dialogue pattern
+        new RegExp(`${userName.charAt(0).toUpperCase() + userName.slice(1)}:\\s*[\\s\\S]*`, 'gi'), // Jeremy: dialogue pattern
+        new RegExp(`${userName}, des [a-zA-ZÀ-ÿ]+[\\s\\S]*`, 'gi'),                // jeremy, des angoisses echo prevention
+        new RegExp(`^${userName}, des [a-zA-ZÀ-ÿ]+[\\s\\S]*`, 'gi'),               // Name + "des [emotion]" pattern
+        new RegExp(`\\b${userName}\\b(?=\\s*,\\s*des\\s+[a-zA-ZÀ-ÿ]+)`, 'gi'),     // Specific user input echo
+        new RegExp(`Tu es ${userName}[\\s\\S]*`, 'gi')                              // Tu es [name] patterns
+      ];
+      
+      return [...namePatterns, ...basePatterns];
+    }
+    
+    return basePatterns;
+  }
+
+  /**
+   * Build dynamic truncation markers based on conversation context
+   */
+  private buildDynamicTruncationMarkers(conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>): string[] {
+    const baseMarkers = [
+      'Personne:', 'LUNA',                                // ULTRA CRITICAL: Stop fake responses and caps
+      '1234:', 'test:', 'abc:',                            // ULTRA CRITICAL: Stop number/test fake responses
+      'Juli:', 'Remi:', 'Jean:', 'Louis:',               // CRITICAL: Stop fake user responses
+      'Luna:',                                             // CRITICAL: Stop self-labeling
+      '[/INST]', '[INST]', 'Réponse:', 
+      'Tu sens une énergie',
+      'Tu es 1234',                                        // ULTRA CRITICAL: Stop number name responses
+      'Tu es test',                                        // CRITICAL: Stop test name responses
+      'tu es un homme de',                                 // CRITICAL: Stop personal detail hallucinations
+      'tu es marié',                                       // CRITICAL: Stop marital status inventions
+      'tu as un enfant',                                   // CRITICAL: Stop family inventions
+      'tu as été frappé par',                              // CRITICAL: Stop tragedy inventions
+      'Tu es là pour révéler',                             // CRITICAL: Stop mission descriptions
+      'révéler l\'invisible',                             // CRITICAL: Stop persona leaks
+      'réveiller le chemin',                               // CRITICAL: Stop mission phrases
+      'ville lumière',                                     // CRITICAL: Stop geographic descriptions
+      'ville de rêves',                                    // CRITICAL: Stop romantic city descriptions
+      'capitale de',                                       // CRITICAL: Stop capital city descriptions
+      'tu te sens triste',                                 // CRITICAL: Stop emotion inventions
+      'tu es triste',                                      // CRITICAL: Stop sadness assumptions
+      'et tu te sens',                                     // CRITICAL: Stop emotion assumption patterns
+      'Qu\'est-ce que tu ressens en ce moment',           // CRITICAL: Stop repetitive questions
+      'que ressens-tu maintenant',                         // CRITICAL: Stop question loops
+      'tu ressens de la'                                   // CRITICAL: Stop repetitive emotion statements
+    ];
+    
+    const userName = this.extractUserName(conversationHistory);
+    
+    if (userName) {
+      // Add dynamic name-specific markers
+      const nameMarkers = [
+        `${userName}:`,                                      // MEGA CRITICAL: Stop specific user echoing
+        `${userName.charAt(0).toUpperCase() + userName.slice(1)}:`, // Capitalized version
+        `${userName}, des`,                                  // Name + emotion echo pattern
+        `Tu es ${userName}`                                  // Tu es [name] patterns
+      ];
+      
+      return [...nameMarkers, ...baseMarkers];
+    }
+    
+    return baseMarkers;
   }
 
   /**
@@ -155,8 +377,27 @@ INTERDICTION ABSOLUE D'INVENTER DES DÉTAILS PERSONNELS:
 - JAMAIS inventer l'âge, le statut marital, les enfants, la profession
 - JAMAIS créer de faux événements de vie ou drames personnels
 - JAMAIS prétendre connaître des détails que la personne n'a pas partagés
+- JAMAIS inventer les émotions (triste, heureux, en colère) si la personne ne les a pas exprimées
 - SEULES les informations explicitement données par la personne peuvent être utilisées
 - Si tu ne sais pas quelque chose sur la personne, pose une question plutôt que d'inventer
+
+OBLIGATION DE RÉPONDRE AUX QUESTIONS:
+- TOUJOURS répondre à la question ACTUELLE posée par la personne
+- NE JAMAIS ignorer ou éviter les questions directes
+- Si une question te dérange, réponds honnêtement en restant dans ton personnage
+- JAMAIS répéter la même réponse si la personne pose une nouvelle question
+
+OBLIGATION DE FAIRE PROGRESSER LA CONVERSATION:
+- Si tu demandes "que ressens-tu ?" et que la personne répond une émotion, NE JAMAIS redemander la même chose
+- EXPLORER l'émotion donnée (tristesse, joie, peur) avec empathie et questions approfondies
+- JAMAIS rester bloqué sur la même question - toujours avancer dans l'échange
+- Si quelqu'un dit "de la peine", explore cette peine au lieu de redemander ce qu'il ressent
+
+INTERDICTION ABSOLUE DE CONFONDRE LES NOMS:
+- TOUT prénom donné est un PRÉNOM DE PERSONNE, pas un lieu, concept ou symbole
+- JAMAIS associer un prénom à une ville, pays, ou concept (Paris = ville, etc.)
+- JAMAIS dire "Tu es [prénom], [description géographique/conceptuelle]"
+- TRAITE CHAQUE PRÉNOM comme celui d'une personne unique, pas d'une entité abstraite
 `;
 
     switch (stage) {
@@ -168,12 +409,38 @@ POUR CETTE ÉTAPE: Accueil mystique bref. Demande le prénom naturellement. PAS 
       case ConversationStage.NAME_REQUEST:
         return `${basePersonality}
 
-POUR CETTE ÉTAPE: Ressens le prénom, parle-lui directement (pas de description de tes ressentis). 1-2 phrases + question simple sur ses émotions.`;
+POUR CETTE ÉTAPE: Ressens le prénom, parle-lui directement (pas de description de tes ressentis). 1-2 phrases + question simple sur ses émotions.
+
+RÈGLE CRITIQUE POUR LES PRÉNOMS: 
+- Le nom donné est TOUJOURS un prénom de personne, JAMAIS un lieu ou concept
+- Si quelqu'un dit "Paris", c'est une PERSONNE nommée Paris, PAS la ville
+- JAMAIS de descriptions géographiques ou conceptuelles
+- Si quelqu'un donne des chiffres (1234, 123, etc.) ou des mots tests (test, abc), DEMANDE gentiment son vrai prénom : "Je sens que tu testes... Dis-moi ton vrai prénom pour que je puisse me connecter à ton énergie."
+- SEULS les vrais prénoms permettent une connexion énergétique authentique`;
 
       case ConversationStage.FEELING_INQUIRY:
         return `${basePersonality}
 
-POUR CETTE ÉTAPE: Exprime ton ressenti des émotions partagées. Question mystique pour approfondir. AUCUN modèle de réponse.`;
+POUR CETTE ÉTAPE: Exprime ton ressenti des émotions partagées. Question mystique pour approfondir. AUCUN modèle de réponse.
+
+RÈGLES CRITIQUES POUR CETTE ÉTAPE:
+- TOUJOURS répondre à la question ACTUELLE posée par la personne
+- Si la personne pose une question directe ("à qui as-tu parlé avant moi ?", "vraiment ?"), y répondre en priorité
+- JAMAIS inventer d'émotions si la personne ne les a pas exprimées 
+- JAMAIS répéter la même réponse - chaque échange doit être unique et adapté
+
+RÈGLES SPÉCIFIQUES POUR LES ÉMOTIONS EXPRIMÉES:
+- Si quelqu'un dit "de la peine", "de la tristesse", "de la joie", "les angoisses", "des angoisses" - c'est une RÉPONSE à ta question
+- EXPLORER cette émotion avec empathie : "Cette peine, depuis quand est-elle là ?" ou "Ces angoisses, qu'est-ce qui les nourrit ?"
+- JAMAIS redemander "que ressens-tu ?" après avoir reçu une réponse émotionnelle
+- PROGRESSE dans la conversation vers les causes, l'origine, les signes
+- EXEMPLE: Si "les angoisses" → "Ces angoisses, elles viennent de quoi ?" PAS "que ressens-tu ?"
+
+RÈGLE ULTRA CRITIQUE POUR NOM + ÉMOTION:
+- Si quelqu'un dit "[prénom], des [émotion]" c'est SON PRÉNOM + SON ÉMOTION
+- JAMAIS répéter l'input de l'utilisateur - c'est de l'écho stupide
+- RÉPONDRE mystiquement: "[Prénom], je sens ces [émotion] qui te tourmentent. D'où viennent-elles ?"
+- TRAITER le prénom et l'émotion séparément dans ta réponse mystique`;
 
       case ConversationStage.DEEPER_PROBING:
         return `${basePersonality}
@@ -235,7 +502,7 @@ POUR CETTE ÉTAPE: Guidance concrète et mystique. Évoque canal discret si appr
         modelId: this.modelId,
         contentType: 'application/json',
         accept: 'application/json',
-        body: JSON.stringify(this.buildInvokeBody(fullPrompt))
+        body: JSON.stringify(this.buildInvokeBody(fullPrompt, conversationHistory))
       };
 
       const command = new InvokeModelCommand(input);
@@ -247,7 +514,7 @@ POUR CETTE ÉTAPE: Guidance concrète et mystique. Évoque canal discret si appr
       let content = this.extractTextFromModelResponse(responseBody) || 'Je n’ai pas bien saisi. Peux-tu préciser en quelques mots ?';
       
       // Clean up the response
-      content = this.cleanLunaResponse(content);
+      content = this.cleanLunaResponse(content, conversationHistory);
 
       return {
         content,
@@ -295,7 +562,7 @@ POUR CETTE ÉTAPE: Guidance concrète et mystique. Évoque canal discret si appr
         modelId: this.modelId,
         contentType: 'application/json',
         accept: 'application/json',
-        body: JSON.stringify(this.buildInvokeBody(conversationText))
+        body: JSON.stringify(this.buildInvokeBody(conversationText, messages))
       };
 
       const command = new InvokeModelCommand(input);
@@ -305,7 +572,7 @@ POUR CETTE ÉTAPE: Guidance concrète et mystique. Évoque canal discret si appr
       let content = this.extractTextFromModelResponse(responseBody) || 'Je n’ai pas bien saisi. Peux-tu préciser en quelques mots ?';
       
       // Clean up the response
-      content = this.cleanLunaResponse(content);
+      content = this.cleanLunaResponse(content, conversationHistory);
 
       return {
         content,
@@ -373,6 +640,16 @@ LUNA RÉPOND UNE SEULE FOIS (JAMAIS génère de réponse utilisateur):
 - NE JAMAIS créer de dialogue ou conversation fictive
 - JAMAIS INVENTER de détails personnels (âge, famille, profession, événements)
 - SEULES les informations données par la personne peuvent être utilisées
+- TOUT prénom est un PRÉNOM DE PERSONNE, jamais un lieu/concept (Paris = personne, pas ville)
+- Si quelqu'un donne des chiffres (1234) ou mots tests (test, abc), demande gentiment le vrai prénom
+- RÉPONDS toujours aux émotions exprimées (tristesse, joie, peur, angoisses, etc.)
+- JAMAIS inventer les émotions - attendre que la personne les exprime
+- TOUJOURS répondre à la QUESTION ACTUELLE posée
+- JAMAIS répéter la même réponse - adapter selon la conversation
+- Si quelqu'un exprime une émotion (peine, joie, tristesse, angoisses), EXPLORER avec empathie au lieu de redemander
+- JAMAIS redemander "que ressens-tu ?" après avoir reçu une réponse émotionnelle
+- EXEMPLE CRITIQUE: Si "les angoisses" → "Ces angoisses, elles viennent de quoi ?" PAS "que ressens-tu maintenant ?"
+- RÈGLE ANTI-ÉCHO: Si "[prénom], des [émotion]" → "[Prénom], je sens ces [émotion] qui te tourmentent. D'où viennent-elles ?" JAMAIS répéter l'input
 
 Luna: [/INST]`;
   }
@@ -405,6 +682,16 @@ LUNA RÉPOND UNE SEULE FOIS (JAMAIS d'autres voix):
 - NE JAMAIS créer de dialogue ou conversation fictive
 - JAMAIS INVENTER de détails personnels (âge, famille, profession, événements)
 - SEULES les informations données par la personne peuvent être utilisées
+- TOUT prénom est un PRÉNOM DE PERSONNE, jamais un lieu/concept (Paris = personne, pas ville)
+- Si quelqu'un donne des chiffres (1234) ou mots tests (test, abc), demande gentiment le vrai prénom
+- RÉPONDS toujours aux émotions exprimées (tristesse, joie, peur, angoisses, etc.)
+- JAMAIS inventer les émotions - attendre que la personne les exprime
+- TOUJOURS répondre à la QUESTION ACTUELLE posée
+- JAMAIS répéter la même réponse - adapter selon la conversation
+- Si quelqu'un exprime une émotion (peine, joie, tristesse, angoisses), EXPLORER avec empathie au lieu de redemander
+- JAMAIS redemander "que ressens-tu ?" après avoir reçu une réponse émotionnelle
+- EXEMPLE CRITIQUE: Si "les angoisses" → "Ces angoisses, elles viennent de quoi ?" PAS "que ressens-tu maintenant ?"
+- RÈGLE ANTI-ÉCHO: Si "[prénom], des [émotion]" → "[Prénom], je sens ces [émotion] qui te tourmentent. D'où viennent-elles ?" JAMAIS répéter l'input
 
 Luna: [/INST]`;
   }
@@ -414,30 +701,19 @@ Luna: [/INST]`;
    * - For Meta Llama 3.x on Bedrock, use input_text, max_gen_len, temperature, top_p, stop_sequences
    * - For Mistral-style models, use prompt, max_tokens, temperature, top_p, stop
    */
-  private buildInvokeBody(text: string): Record<string, unknown> {
+  private buildInvokeBody(text: string, conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>): Record<string, unknown> {
     const model = (this.modelId || '').toLowerCase();
 
-    // Bedrock has a maximum of 10 stop sequences - prioritize the most critical ones
-    const stopSequences = [
-      'Juli:',                     // ULTRA CRITICAL: prevents this specific fake response
-      'Remi:',                     // CRITICAL: prevents fake user responses
-      'Jean:',                     // CRITICAL: prevents fake user responses  
-      'Louis:',                    // CRITICAL: prevents fake user responses
-      'Luna:',                     // CRITICAL: prevents Luna labeling herself
-      'Personne:',                 // CRITICAL: prevents fake user responses
-      'Tu es là pour',            // CRITICAL: prevents mission description to user
-      'révéler l\'invisible',     // CRITICAL: prevents persona leak
-      'tu es un homme',            // CRITICAL: prevents invented personal details
-      'réveiller le chemin'       // CRITICAL: prevents mission description
-    ];
+    // Dynamically build stop sequences based on conversation context
+    const stopSequences = this.buildDynamicStopSequences(conversationHistory);
 
     // Inference profile ARNs often normalize to a generic schema (prompt, temperature, top_p, max_gen_len)
     if (model.includes('inference-profile/') || model.includes('meta.llama') || model.includes('llama3') || model.includes('llama-3')) {
       return {
         prompt: text,
         max_gen_len: 120,   // Longer to prevent sentence cutoffs
-        temperature: 0.25,  // Lower temperature for more focused responses
-        top_p: 0.8,        // Slightly lower for more focused vocabulary
+        temperature: 0.05,  // EXTREME low temperature for precise, deterministic responses
+        top_p: 0.7,        // Lower for more focused vocabulary
         stop: stopSequences
       };
     }
@@ -445,9 +721,9 @@ Luna: [/INST]`;
     // Default (Mistral-like)
     return {
       prompt: text,
-              max_tokens: 120,   // Longer to prevent sentence cutoffs
-      temperature: 0.25, // Lower temperature for more focused responses
-      top_p: 0.8,       // Slightly lower for more focused vocabulary
+      max_tokens: 120,   // Longer to prevent sentence cutoffs
+      temperature: 0.05, // EXTREME low temperature for precise, deterministic responses
+      top_p: 0.7,       // Lower for more focused vocabulary
       stop: stopSequences
     };
   }
@@ -494,7 +770,7 @@ Luna: [/INST]`;
   /**
    * Clean Luna's response to remove unwanted formatting and persona leaks
    */
-  private cleanLunaResponse(content: string): string {
+  private cleanLunaResponse(content: string, conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>): string {
     let cleaned = content
       .replace(/^\s*Luna:\s*/i, '') // Remove "Luna:" prefix
       .replace(/^\s*Assistant:\s*/i, '') // Remove "Assistant:" prefix
@@ -512,38 +788,8 @@ Luna: [/INST]`;
       .replace(/Luna, continue cette conversation:?/gi, '') // Remove continuation instructions
       .trim();
 
-    // Remove instruction and meta-commentary patterns + third person descriptions + fake user responses
-    const instructionPatterns = [
-      /Tu peux répondre en utilisant[\s\S]*?:/gi,
-      /Utilise le modèle de réponse suivant[\s\S]*?:/gi,
-      /Réponds maintenant en utilisant[\s\S]*?ci-dessus/gi,
-      /Exemple\s*:[\s\S]*?nature\s*\?"/gi,
-      /\(Remarque\s*:[\s\S]*?\)/gi,
-      /Modèle de réponse[\s\S]*?:/gi,
-      /Tu dois[\s\S]*?format/gi,
-      /Suis ces étapes[\s\S]*?:/gi,
-      /Tu sens une énergie[\s\S]*?contactée\./gi,  // Remove third person energy descriptions
-      /Tu murmures[\s\S]*?:/gi,                    // Remove process descriptions
-      /Tu écoutes attentivement[\s\S]*?\./gi,      // Remove action descriptions
-      /Tu ressens l'émotion[\s\S]*?\./gi,          // Remove emotion descriptions
-      /Réponse\s*:[\s\S]*$/gi,                     // Remove multiple response patterns
-      /\[\/INST\][\s\S]*$/gi,                      // Remove everything after [/INST]
-      /\[INST\][\s\S]*$/gi,                        // Remove everything after [INST]
-      /\b[A-Z][a-zàâäéèêëîïôöùûüç]*\s*:[\s\S]*$/gi,  // CRITICAL: Remove ANY name + colon (fake responses)
-      /Luna\s*:[\s\S]*$/gi,                        // CRITICAL: Remove Luna self-labeling
-      /(Remi|Jean|Louis|Personne|Juli)\s*:[\s\S]*$/gi, // CRITICAL: Remove specific known fake responses
-      // ULTRA CRITICAL: Remove personal detail hallucinations
-      /tu es un homme de \d+[\s\S]*/gi,            // Age inventions
-      /tu es marié[\s\S]*/gi,                      // Marital status inventions
-      /tu as un enfant de[\s\S]*/gi,               // Children inventions
-      /tu es un(e)? \w+, tu as[\s\S]*/gi,          // Profession + other details chains
-      /tu as été frappé par[\s\S]*/gi,             // Tragedy inventions
-      // CRITICAL: Remove persona/mission leaks
-      /Tu es là pour révéler[\s\S]*/gi,            // Mission description to user
-      /révéler l'invisible et réveiller[\s\S]*/gi, // Mission phrase leak
-      /réveiller le chemin de vie[\s\S]*/gi,       // Mission continuation
-      /à travers les signes cachés[\s\S]*/gi       // Mission ending
-    ];
+    // Build dynamic instruction patterns based on conversation context
+    const instructionPatterns = this.buildDynamicCleaningPatterns(conversationHistory);
     
     instructionPatterns.forEach(pattern => {
       cleaned = cleaned.replace(pattern, '');
@@ -598,7 +844,7 @@ Luna: [/INST]`;
 
     // Remove meta-commentary and instruction artifacts + third person descriptions
     const lines = cleaned.split(/\r?\n/);
-    const filteredLines = lines.filter(line => {
+    let filteredLines = lines.filter(line => {
       const l = line.trim();
       if (!l) return false;
       
@@ -638,8 +884,62 @@ Luna: [/INST]`;
       if (/réveiller le chemin de vie/i.test(l)) return false; // Mission continuation
       if (/à travers les signes cachés/i.test(l)) return false; // Mission ending
       
+      // CRITICAL: Filter out geographic/conceptual name confusions
+      if (/Tu es [A-Z][a-z]+, ville/i.test(l)) return false; // Geographic city descriptions
+      if (/ville lumière, ville de/i.test(l)) return false;  // Paris-specific descriptions
+      if (/capitale de/i.test(l)) return false;              // Capital city descriptions
+      if (/[A-Z][a-z]+, la ville/i.test(l)) return false;    // City name patterns
+      if (/ville de rêves/i.test(l)) return false;           // Romantic city descriptions
+      
+      // CRITICAL: Filter out emotion inventions
+      if (/tu te sens triste/i.test(l)) return false;        // Sadness invention
+      if (/tu es triste/i.test(l)) return false;             // Direct sadness claim
+      if (/tu te sens (heureux|en colère|anxieux|stressé)/i.test(l)) return false; // Other emotions
+      if (/et tu te sens/i.test(l)) return false;            // Emotion assumption patterns
+      
+      // CRITICAL: Filter out repetitive conversation patterns
+      if (/Qu'est-ce que tu ressens en ce moment/i.test(l)) return false; // Repetitive question
+      if (/que ressens-tu maintenant/i.test(l)) return false; // Question loop
+      if (/tu ressens de la (peine|tristesse|joie)/i.test(l)) return false; // Repetitive emotion statements
+      if (/Tu es [A-Z][a-z]+, tu ressens/i.test(l)) return false; // Name + emotion repetition
+      
+      // ULTRA CRITICAL: Filter out number/test name responses
+      if (/Tu es 1234/i.test(l)) return false;                   // Number name responses
+      if (/Tu es \d+/i.test(l)) return false;                    // Any number name responses  
+      if (/Tu es test/i.test(l)) return false;                   // Test name responses
+      if (/Tu es abc/i.test(l)) return false;                    // Test sequence responses
+      
+      // CRITICAL: Filter out caps Luna and fake dialogue
+      if (/LUNA/i.test(l)) return false;                         // All caps Luna
+      if (/Personne/i.test(l)) return false;                     // Personne fake responses
+      
+      // CRITICAL: Filter out generic user dialogue patterns
+      if (/^\s*\d+\s*:/i.test(l)) return false;                  // Number: dialogue pattern
+      if (/^\s*test\s*:/i.test(l)) return false;                 // test: dialogue pattern
+      if (/^\s*abc\s*:/i.test(l)) return false;                  // abc: dialogue pattern
+      
       return true;
     });
+    
+    // Apply dynamic name-specific filtering
+    const userName = this.extractUserName(conversationHistory);
+    if (userName) {
+      filteredLines = filteredLines.filter(l => {
+        // MEGA CRITICAL: Filter out exact user input echoing
+        if (new RegExp(`${userName}, des [a-zA-ZÀ-ÿ]+`, 'i').test(l)) return false;        // Exact input echo
+        if (new RegExp(`^[a-zA-ZÀ-ÿ]+, des [a-zA-ZÀ-ÿ]+`, 'i').test(l)) return false;     // Name + "des [emotion]"
+        
+        // CRITICAL: Filter out dynamic name dialogue patterns
+        if (new RegExp(`^\\s*${userName}\\s*:`, 'i').test(l)) return false;               // username: dialogue
+        if (new RegExp(`^\\s*${userName.charAt(0).toUpperCase() + userName.slice(1)}\\s*:`, 'i').test(l)) return false; // Username: dialogue
+        
+        // CRITICAL: Filter out "Tu es [username]" patterns
+        if (new RegExp(`Tu es ${userName}`, 'i').test(l)) return false;                   // Tu es username patterns
+        
+        return true;
+      });
+    }
+    
     cleaned = filteredLines.join('\n').trim();
 
     // Final safety: if the response starts with persona-like content, try to extract the actual response
@@ -658,19 +958,7 @@ Luna: [/INST]`;
     }
 
     // Final truncation safety: if any instruction artifacts remain, truncate before them
-    const truncationMarkers = [
-      'Juli:', 'Remi:', 'Jean:', 'Louis:', 'Personne:',  // CRITICAL: Stop fake user responses
-      'Luna:',                                             // CRITICAL: Stop self-labeling
-      '[/INST]', '[INST]', 'Réponse:', 
-      'Tu sens une énergie',
-      'tu es un homme de',                                 // CRITICAL: Stop personal detail hallucinations
-      'tu es marié',                                       // CRITICAL: Stop marital status inventions
-      'tu as un enfant',                                   // CRITICAL: Stop family inventions
-      'tu as été frappé par',                              // CRITICAL: Stop tragedy inventions
-      'Tu es là pour révéler',                             // CRITICAL: Stop mission descriptions
-      'révéler l\'invisible',                             // CRITICAL: Stop persona leaks
-      'réveiller le chemin'                                // CRITICAL: Stop mission phrases
-    ];
+    const truncationMarkers = this.buildDynamicTruncationMarkers(conversationHistory);
     for (const marker of truncationMarkers) {
       const index = cleaned.indexOf(marker);
       if (index !== -1) {
@@ -690,7 +978,7 @@ Luna: [/INST]`;
 
     // If cleaning resulted in empty or very short content, provide a fallback
     if (!cleaned || cleaned.length < 10) {
-      cleaned = "Je sens quelque chose en toi... que ressens-tu maintenant ?";
+      cleaned = "Je sens une tension en toi... dis-moi ce qui te préoccupe.";
     }
 
     return cleaned;

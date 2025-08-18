@@ -541,19 +541,39 @@
 
         function checkExistingChatState() {
             try {
-                const savedChat = localStorage.getItem('guestChat_currentChat');
-                const savedEmail = localStorage.getItem('guestChat_userEmail');
+                // Check new Luna streaming conversations
+                const lunaConversations = localStorage.getItem('luna_conversations');
                 
-                if (savedChat && savedEmail) {
-                    const chatData = JSON.parse(savedChat);
+                if (lunaConversations) {
+                    const conversations = JSON.parse(lunaConversations);
+                    const chatButton = document.getElementById('chatButton');
+                    
+                    if (conversations && conversations.length > 0) {
+                        // Get the most recent conversation
+                        const latestConversation = conversations[conversations.length - 1];
+                        if (latestConversation && latestConversation.id) {
+                            // Update button text to indicate continuing session
+                            chatButton.innerHTML = '🔄 Continuer ma consultation avec Luna';
+                            chatButton.title = 'Continuer votre session existante avec Luna streaming';
+                            console.log('🌙 Existing Luna conversation found:', latestConversation.id);
+                            return { conversation: latestConversation };
+                        }
+                    }
+                }
+
+                // Fallback: check legacy guest chat system for migration
+                const legacyChat = localStorage.getItem('guestChat_currentChat');
+                const legacyEmail = localStorage.getItem('guestChat_userEmail');
+                
+                if (legacyChat && legacyEmail) {
+                    const chatData = JSON.parse(legacyChat);
                     const chatButton = document.getElementById('chatButton');
                     
                     if (chatData && chatData.id) {
-                        // Update button text to indicate continuing session
                         chatButton.innerHTML = '🔄 Continuer ma consultation avec Luna';
-                        chatButton.title = 'Continuer votre session existante';
-                        console.log('Existing chat session found:', chatData.id);
-                        return { chat: chatData, email: savedEmail };
+                        chatButton.title = 'Continuer votre session (migration vers WebSocket)';
+                        console.log('🔄 Legacy chat session found, will migrate to streaming');
+                        return { chat: chatData, email: legacyEmail, legacy: true };
                     }
                 }
             } catch (err) {
@@ -568,8 +588,8 @@
             // Check if there's an existing chat to continue
             const existingState = checkExistingChatState();
             
-            // Always reset iframe src to ensure fresh load with state recovery
-            iframe.src = `/chat-iframe`;
+            // Use the new Luna WebSocket streaming page instead of old HTTP chat
+            iframe.src = `/luna-streaming`;
 
             const overlay = document.getElementById('iframeOverlay');
             overlay.style.display = 'flex';
@@ -628,6 +648,44 @@
             if (data.type === 'disable-overlay-close') {
                 const btn = document.querySelector('.close-button');
                 if (btn) { btn.style.display = 'none'; }
+            }
+        });
+
+        // Add warning when trying to leave page with active conversation
+        window.addEventListener('beforeunload', function(event) {
+            // Check if there's Luna streaming conversation data
+            const lunaConversations = localStorage.getItem('luna_conversations');
+            
+            // Also check legacy chat data for backward compatibility
+            const legacyChat = localStorage.getItem('guestChat_currentChat');
+            const legacyEmail = localStorage.getItem('guestChat_userEmail');
+            
+            if (lunaConversations || (legacyChat && legacyEmail)) {
+                // Modern browsers show a generic message, not custom text
+                // This will trigger the browser's built-in "Leave page?" dialog
+                event.preventDefault();
+                event.returnValue = ''; // Modern browsers ignore custom messages
+            }
+        });
+
+        // Clear data only when page actually unloads (user confirmed leaving)
+        window.addEventListener('unload', function() {
+            // Clear Luna streaming conversation data
+            const lunaConversations = localStorage.getItem('luna_conversations');
+            if (lunaConversations) {
+                localStorage.removeItem('luna_conversations');
+                localStorage.removeItem('luna_settings');
+                console.log('🌙 Luna streaming data cleared from localStorage on page unload');
+            }
+            
+            // Clear legacy chat data for backward compatibility
+            const legacyChat = localStorage.getItem('guestChat_currentChat');
+            const legacyEmail = localStorage.getItem('guestChat_userEmail');
+            
+            if (legacyChat && legacyEmail) {
+                localStorage.removeItem('guestChat_currentChat');
+                localStorage.removeItem('guestChat_userEmail');
+                console.log('🔄 Legacy chat data cleared from localStorage on page unload');
             }
         });
     </script>

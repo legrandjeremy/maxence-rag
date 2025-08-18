@@ -16,8 +16,15 @@ const routes: RouteRecordRaw[] = [
         path: 'chat',
         component: () => import('pages/ChatPage.vue'),
         meta: { requiresAuth: true }
-      },
+      }
     ],
+  },
+  {
+    path: '/luna-streaming',
+    component: () => import('layouts/LunaStreamingLayout.vue'),
+    children: [
+      { path: '', component: () => import('pages/LunaStreamingPage.vue') }
+    ]
   },
   {
     path: '/callback',

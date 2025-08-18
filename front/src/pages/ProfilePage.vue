@@ -84,6 +84,9 @@
   const authStore = useAuthStore()
   const showDebug = ref(false)
   const router = useRouter()
+  
+  // Role constants
+  const ROLE_DR__NATIONAL_FEDERATION_STAFF__ADMIN = 'dr:national_federation_staff:admin'
 
   const countryFlagValue = ref('FRA3')
   const countryName = ref('France3')

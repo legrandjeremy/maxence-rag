@@ -290,6 +290,8 @@ deploy_frontend() {
 API_URL=$API_URL
 AUTH0_DOMAIN=$AUTH0_DOMAIN
 AUTH0_CLIENT_ID=$AUTH0_CLIENT_ID
+LUNA_WS_ENDPOINT=wss://4i704zb47j.execute-api.us-east-1.amazonaws.com/staging/
+VITE_LUNA_WS_ENDPOINT=wss://4i704zb47j.execute-api.us-east-1.amazonaws.com/staging/
 EOF
     
     # Generate welcome page with CloudFront domain and API URL

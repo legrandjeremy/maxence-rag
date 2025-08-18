@@ -4,7 +4,7 @@
       <q-toolbar>
         <q-btn v-if="authStore.isSignedIn" flat dense round icon="menu" aria-label="Menu" @click="toggleLeftDrawer" />
 
-        <q-toolbar-title>Maxence Chat</q-toolbar-title>
+        <q-toolbar-title>Luna</q-toolbar-title>
 
         <q-select
           v-model="locale"

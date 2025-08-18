@@ -53,7 +53,20 @@ export default defineBoot(async ({ app }) => {
               const accessToken = await auth0Client.getAccessTokenSilently()
               const userHelper = new UserHelper(accessToken)
               const customEmail = userHelper.getEmail()
-              const appMetadata = userHelper.getAppMetadata() ?? {}
+              const rawAppMetadata = userHelper.getAppMetadata() ?? {}
+              
+              // Transform UserMetaData to AppMetadata format
+              const appMetadata = {
+                roles: (rawAppMetadata.roles || []).map(role => ({
+                  role: role.role,
+                  details: {
+                    name: role.role, // Use role as name since name is required
+                    ...(role.details?.countryId && { countryId: role.details.countryId.toString() }),
+                    ...(role.details?.countryCode && { countryCode: role.details.countryCode })
+                  }
+                })),
+                displayName: rawAppMetadata.displayName || 'User'
+              }
               
               authStore.setData(accessToken, auth0Client.user.value, customEmail, appMetadata)
             } catch (error) {

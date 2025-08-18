@@ -54,7 +54,7 @@ export default defineConfig((ctx) => {
 
       // publicPath: '/',
       // analyze: true,
-      // env: {},
+      // Remove env config - Vite handles VITE_ prefixed variables automatically
       // rawDefine: {}
       // ignorePublicFolder: true,
       // minify: false,
