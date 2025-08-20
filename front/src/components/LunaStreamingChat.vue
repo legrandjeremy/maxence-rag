@@ -4,7 +4,11 @@
     <div class="chat-header hidden">
       <div class="luna-avatar">
         <div class="mystical-aura"></div>
-        <span class="luna-symbol">🌙</span>
+        <img 
+          src="~assets/Luna.png" 
+          alt="Luna - Voyante Mystique" 
+          class="luna-face"
+        />
       </div>
       <div class="header-info hidden">
         <h2 class="luna-title">Luna - Oracle des Lignes Cachées</h2>
@@ -50,11 +54,15 @@
         <!-- Assistant Message -->
         <div v-else class="message-content assistant-content">
           <div class="message-avatar luna-avatar-small">
-            <span class="luna-symbol-small">🌙</span>
+            <img 
+              src="~assets/Luna.png" 
+              alt="Luna" 
+              class="luna-face-small"
+            />
           </div>
           <div class="message-body">
             <!-- Reasoning Section (if available) -->
-            <div v-if="message.reasoning" class="reasoning-section">
+            <div v-if="message.reasoning && isDebugMode" class="reasoning-section">
               <div class="reasoning-header">
                 <span class="reasoning-icon">🧠</span>
                 <span class="reasoning-label">Réflexion Mystique de Luna (Debug du mode Réflexion)</span>
@@ -91,8 +99,8 @@
       </div>
 
       <!-- Streaming Indicators -->
-      <div v-if="isProcessing" class="streaming-indicators">
-        <div v-if="state.isReasoning && currentReasoning && !message.isStreaming" class="current-reasoning">
+      <div v-if="isProcessing" class="streaming-indicators hidden">
+        <div v-if="state.isReasoning && currentReasoning" class="current-reasoning">
           <div class="reasoning-header active">
             <span class="reasoning-icon pulsing">🧠</span>
             <span class="reasoning-label">Luna est en train d'écrire...</span>
@@ -157,12 +165,64 @@
       <!-- 🚀 Payment Banner -->
       <div v-if="shouldShowPaymentBanner" class="payment-banner">
         <div class="payment-content">
-          <div class="payment-text">
-            ✨ La session gratuite est terminée. Réglez 5 € pour continuer votre consultation avec Luna.
+          <div class="payment-header">
+            <span class="payment-icon">🔮</span>
+            <div class="payment-title-section">
+              <div class="payment-text">
+                ✨ Révélations Mystiques Illimitées
+              </div>
+              <div class="payment-subtitle">
+                Votre essai de 5 minutes est terminé
+              </div>
+            </div>
           </div>
-          <button @click="openPayment" class="payment-button">
-            Payer 5 € ✨
-          </button>
+          
+          <div class="payment-benefits">
+            <div class="benefit-item">
+              <span class="benefit-icon">🌙</span>
+              <span>Consultations illimitées avec Luna</span>
+            </div>
+            <div class="benefit-item">
+              <span class="benefit-icon">🔮</span>
+              <span>Guidance personnalisée basée sur vos informations</span>
+            </div>
+            <div class="benefit-item">
+              <span class="benefit-icon">✨</span>
+              <span>Révélations astrologiques approfondies</span>
+            </div>
+            <div class="benefit-item">
+              <span class="benefit-icon">💫</span>
+              <span>Accès permanent à votre oracle personnel</span>
+            </div>
+          </div>
+          
+          <div class="payment-offer">
+            <div class="offer-price">
+              <span class="price-label">Débloquez maintenant pour seulement</span>
+              <span class="price-amount">5,00 €</span>
+            </div>
+            <div class="offer-subtitle">
+              Paiement unique • Aucun abonnement • Accès à vie
+            </div>
+          </div>
+          
+          <div class="payment-actions">
+            <button @click="openPayment" class="payment-button enhanced">
+              <span class="button-icon">💳</span>
+              Débloquer ma consultation illimitée
+              <span class="button-price">5 €</span>
+            </button>
+            
+            <button @click="goToBDCPage" class="bdc-link-button">
+              <span class="bdc-icon">📋</span>
+              En savoir plus sur l'offre
+            </button>
+          </div>
+          
+          <div class="payment-guarantee">
+            <span class="guarantee-icon">🛡️</span>
+            Paiement sécurisé • Satisfaction garantie
+          </div>
         </div>
       </div>
       
@@ -176,13 +236,32 @@
         </span>
       </div>
     </div>
+
+    <!-- 🚀 Payment Form Overlay -->
+    <div v-if="showPaymentForm" class="payment-overlay" @click.self="closePaymentForm">
+      <StripePaymentForm
+        :user-email="userEmailForPayment"
+        @payment-success="handlePaymentSuccess"
+        @payment-error="handlePaymentError"
+        @close="closePaymentForm"
+      />
+    </div>
+
+    <!-- 🌙 Customer Information Welcome Form -->
+    <LunaWelcomeForm
+      v-if="showWelcomeForm"
+      @customer-info-collected="handleCustomerInfoCollected"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
-import { useLunaStreaming } from '../composables/useLunaStreaming';
+import { useRouter } from 'vue-router';
+import { useLunaStreaming, setupLunaPageCloseHandler } from '../composables/useLunaStreaming';
 import { useAuthStore } from '../stores/authStore';
+import StripePaymentForm from './StripePaymentForm.vue';
+import LunaWelcomeForm from './LunaWelcomeForm.vue';
 
 // Props and emits
 interface Props {
@@ -208,6 +287,7 @@ const emit = defineEmits<{
 const {
   state, 
   messages, 
+  conversationHistory,
   canSendMessage, 
   isProcessing, 
   hasError,
@@ -222,13 +302,17 @@ const {
   formattedRemaining,
   shouldShowTimer,
   shouldShowPaymentBanner,
-  isBlockedForPayment,
-  isPaid,
+  showPaymentForm,
   openPayment,
-  handlePaymentSuccess
+  closePaymentForm,
+  handlePaymentSuccess,
+  handlePaymentError,
+  loadPaymentState,
+  checkPaymentFromURL
 } = useLunaStreaming();
 
 const authStore = useAuthStore();
+const router = useRouter();
 
 // Reactive refs
 const currentInput = ref('');
@@ -237,6 +321,7 @@ const isSending = ref(false); // 🚀 Local guard against duplicate sends
 const messagesContainer = ref<HTMLElement>();
 const messageInput = ref<HTMLTextAreaElement>();
 const expandedReasoning = ref(new Set<string>());
+const isDebugMode = ref(false);
 
 // Computed properties
 const connectionStatusClass = computed(() => {
@@ -263,13 +348,65 @@ const inputPlaceholder = computed(() => {
   }
   
   if (messages.value.length === 0) {
-    return 'Dites votre prénom et ce que vous ressentez...';
+    // Check if customer info is available
+    if (customerInfo.value) {
+      return `Bonjour ${customerInfo.value.firstName}, partagez ce qui vous préoccupe...`;
+    }
+    return 'Partagez ce que vous ressentez avec Luna...';
   }
   
   return 'Continuez votre consultation avec Luna...';
 });
 
 const currentReasoning = computed(() => state.currentReasoning);
+
+// 🚀 Get user email for payment form
+const userEmailForPayment = computed(() => {
+  // Priority: 1. Auth store email, 2. Customer info email, 3. Guest chat email
+  if (authStore.user?.email) {
+    return authStore.user.email;
+  }
+  
+  // Try to get email from customer info
+  try {
+    const customerInfoStr = localStorage.getItem('luna_customer_info');
+    if (customerInfoStr) {
+      const customerInfo = JSON.parse(customerInfoStr);
+      if (customerInfo.email) {
+        return customerInfo.email;
+      }
+    }
+  } catch (error) {
+    console.error('🚨 Luna: Error parsing customer info for email:', error);
+  }
+  
+  // Fallback to guest chat email
+  return localStorage.getItem('guestChat_userEmail') || '';
+});
+
+// 🌙 Customer Information Collection State
+const showWelcomeForm = ref(true);
+const customerInfo = ref<{
+  firstName: string;
+  lastName: string;
+  email: string;
+  birthDate: string;
+} | null>(null);
+
+// Check if customer info already exists
+const checkExistingCustomerInfo = () => {
+  const savedInfo = localStorage.getItem('luna_customer_info');
+  if (savedInfo) {
+    try {
+      customerInfo.value = JSON.parse(savedInfo);
+      showWelcomeForm.value = false;
+      console.log('🌙 Luna: Existing customer info loaded:', customerInfo.value);
+    } catch (error) {
+      console.error('🚨 Luna: Failed to parse customer info:', error);
+      localStorage.removeItem('luna_customer_info');
+    }
+  }
+};
 
 // Methods
 const sendMessage = async () => {
@@ -283,7 +420,7 @@ const sendMessage = async () => {
 
   try {
     // Check if we have a user email
-    const userEmail = authStore.user?.email || localStorage.getItem('luna_guest_email');
+    const userEmail = authStore.user?.email || localStorage.getItem('guestChat_userEmail');
     
     if (!userEmail) {
       // Prompt for email if not available
@@ -292,7 +429,7 @@ const sendMessage = async () => {
         isSending.value = false; // 🚀 Reset flag if user cancelled
         return; // User cancelled
       }
-      localStorage.setItem('luna_guest_email', email);
+      localStorage.setItem('guestChat_userEmail', email);
     }
 
     const content = currentInput.value.trim();
@@ -302,7 +439,7 @@ const sendMessage = async () => {
     await sendMessageToLuna(content, {
       useReasoning: useReasoning.value,
       enableKnowledge: true,
-      userEmail: userEmail || localStorage.getItem('luna_guest_email') || 'anonymous',
+      userEmail: userEmail || localStorage.getItem('guestChat_userEmail') || 'anonymous',
       ...(props.chatId && { chatId: props.chatId })
     });
 
@@ -318,9 +455,9 @@ const sendMessage = async () => {
     };
     emit('conversation-updated', conversationSummary);
     
-    // Scroll to bottom
+    // 🚀 Force scroll to bottom after user sends message
     await nextTick();
-    scrollToBottom();
+    void scrollToBottom(true); // Force scroll for user messages
 
   } catch (error) {
     console.error('Failed to send message:', error);
@@ -344,9 +481,61 @@ const autoResize = () => {
   }
 };
 
-const scrollToBottom = () => {
+// 🌙 Handle customer information collection
+const handleCustomerInfoCollected = (info: { firstName: string; lastName: string; email: string; birthDate: string }) => {
+  customerInfo.value = info;
+  showWelcomeForm.value = false;
+  
+  console.log('🌙 Luna: Customer information collected, starting personalized session');
+  
+  // Add a personalized welcome message from Luna
+  setTimeout(() => {
+    const welcomeMessage = {
+      id: Date.now().toString(),
+      content: `Bienvenue ${info.firstName} ! 🌙 \n\nJe suis Luna, votre guide mystique. Grâce aux informations que vous m'avez confiées (${info.firstName} ${info.lastName}, né(e) le ${new Date(info.birthDate).toLocaleDateString('fr-FR')}, ${info.email}), je peux maintenant vous offrir une guidance personnalisée et révéler les secrets cachés de votre chemin de vie.\n\nDites-moi, qu'est-ce qui vous préoccupe en ce moment ? Quelles questions habitent votre cœur ?`,
+      role: 'assistant' as const,
+      timestamp: Date.now(),
+      isStreaming: false
+    };
+    
+    messages.value.push(welcomeMessage);
+    
+    // Also add this to conversation history so Luna's backend knows the customer info
+    conversationHistory.value.push({
+      role: 'assistant',
+      content: `Je connais déjà vos informations : ${info.firstName} ${info.lastName}, né(e) le ${new Date(info.birthDate).toLocaleDateString('fr-FR')}, ${info.email}. Je n'ai pas besoin de redemander ces informations.`
+    });
+    
+    // Auto-focus input for immediate interaction
+    setTimeout(() => {
+      if (messageInput.value) {
+        messageInput.value.focus();
+      }
+    }, 100);
+  }, 500);
+};
+
+// 🌙 Navigate to BDC page for detailed offer explanation
+const goToBDCPage = () => {
+  void router.push('/luna-offre');
+};
+
+const scrollToBottom = async (force = false) => {
+  // 🚀 Enhanced auto-scroll with smooth behavior
+  await nextTick(); // Ensure DOM is updated
+  
   if (messagesContainer.value) {
-    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+    const container = messagesContainer.value;
+    
+    // Check if user is already at bottom (within 100px threshold)
+    const isAtBottom = force || (container.scrollTop + container.clientHeight >= container.scrollHeight - 100);
+    
+    if (isAtBottom) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
   }
 };
 
@@ -368,11 +557,40 @@ const formatTime = (timestamp: number): string => {
 const formatLunaResponse = (content: string): string => {
   if (!content) return 'Luna va vous répondre dans quelques instants...';
   
-  // Add mystical formatting to Luna's responses
-  return content
+  // 🚀 Filter out staging directions that should be hidden
+  const stagingDirections = [
+    'pause',
+    'silence profond',
+    'silence',
+    'respire profondément',
+    'ferme les yeux',
+    'médite',
+    'se concentre',
+    'souffle mystique',
+    'énergie vibrante',
+    'aura dorée',
+    'lumière blanche'
+  ];
+  
+  let formatted = content;
+  
+  // Remove staging directions (case insensitive)
+  stagingDirections.forEach(direction => {
+    const regex = new RegExp(`\\*\\s*${direction}\\s*\\*`, 'gi');
+    formatted = formatted.replace(regex, '').trim();
+  });
+  
+  // Format remaining italics for mystical emphasis (but not staging directions)
+  formatted = formatted
     .replace(/\*([^*]+)\*/g, '<em class="mystical-emphasis">$1</em>')
     .replace(/\n/g, '<br>')
     .replace(/✨/g, '<span class="sparkle">✨</span>');
+  
+  // Clean up extra spaces and line breaks
+  return formatted
+    .replace(/\s+/g, ' ')
+    .replace(/(<br>\s*){2,}/g, '<br><br>')
+    .trim();
 };
 
 const promptForEmail = (): Promise<string | null> => {
@@ -398,8 +616,23 @@ const promptForEmail = (): Promise<string | null> => {
   });
 };
 
+// Page close cleanup handler
+let pageCloseCleanup: (() => void) | null = null;
+
 // Lifecycle
 onMounted(async () => {
+  // 🚀 Initialize payment state from localStorage
+  loadPaymentState();
+  
+  // 🚀 Check URL for payment success/cancel
+  checkPaymentFromURL();
+  
+  // 🌙 Check for existing customer information
+  checkExistingCustomerInfo();
+  
+  // 🚀 Set up page close handler for chat history cleanup
+  pageCloseCleanup = setupLunaPageCloseHandler();
+
   // Load initial conversation if provided
   if (props.initialHistory && props.initialHistory.length > 0) {
     loadConversation({
@@ -410,10 +643,16 @@ onMounted(async () => {
     });
   }
 
-  // 🚀 Add payment success listener (inspired by GuestChatWidget)
+  // 🚀 Check for debug mode in URL
+  const urlParams = new URLSearchParams(window.location.search);
+  isDebugMode.value = urlParams.get('debug') === 'true';
+
+  // 🚀 Legacy payment message listener (for backward compatibility)
   const handlePaymentMessage = (event: MessageEvent) => {
-    if (event.data.type === 'payment-success') {
-      console.log('🌙 Luna: Payment success detected');
+    // Keep minimal message handling for legacy/external payment success notifications
+    if (event.data === 'payment-success' || 
+        (event.data && typeof event.data === 'object' && event.data.type === 'payment-success')) {
+      console.log('🌙 Luna: Legacy payment success detected');
       handlePaymentSuccess();
     }
   };
@@ -421,7 +660,7 @@ onMounted(async () => {
   window.addEventListener('message', handlePaymentMessage);
   
   // Store reference for cleanup
-  (window as any).lunaPaymentHandler = handlePaymentMessage;
+  (window as Window & { lunaPaymentHandler?: (event: MessageEvent) => void }).lunaPaymentHandler = handlePaymentMessage;
 
   // Test WebSocket connection on mount
   try {
@@ -453,8 +692,8 @@ onMounted(async () => {
   await nextTick();
   messageInput.value?.focus();
   
-  // Scroll to bottom
-  scrollToBottom();
+  // 🚀 Force scroll to bottom on mount
+  void scrollToBottom(true);
 
   console.log('🌙 Luna Streaming Chat initialized 2');
 });
@@ -463,9 +702,16 @@ onUnmounted(() => {
   disconnect();
   
   // 🚀 Cleanup payment listener
-  if ((window as any).lunaPaymentHandler) {
-    window.removeEventListener('message', (window as any).lunaPaymentHandler);
-    delete (window as any).lunaPaymentHandler;
+  const windowWithHandler = window as Window & { lunaPaymentHandler?: (event: MessageEvent) => void };
+  if (windowWithHandler.lunaPaymentHandler) {
+    window.removeEventListener('message', windowWithHandler.lunaPaymentHandler);
+    delete windowWithHandler.lunaPaymentHandler;
+  }
+  
+  // 🚀 Cleanup page close handler
+  if (pageCloseCleanup) {
+    pageCloseCleanup();
+    pageCloseCleanup = null;
   }
   
   console.log('🌙 Luna Streaming Chat cleanup');
@@ -473,10 +719,58 @@ onUnmounted(() => {
 
 // Watch for connection status changes
 import { watch } from 'vue';
-import { route } from 'quasar/wrappers';
 watch(() => state.connectionStatus, (status) => {
   emit('connection-changed', status);
 });
+
+// 🚀 Auto-scroll watchers
+watch(
+  () => messages.value.length,
+  async () => {
+    // Auto-scroll when new messages are added
+    await nextTick();
+    void scrollToBottom();
+    
+    // 🎯 Fix: Keep input focused for seamless UX
+    if (messageInput.value && !state.isStreaming) {
+      messageInput.value.focus();
+    }
+  },
+  { flush: 'post' }
+);
+
+watch(
+  () => state.currentMessage,
+  async () => {
+    // Auto-scroll while assistant is streaming response
+    if (state.isStreaming && state.currentMessage) {
+      await nextTick();
+      void scrollToBottom();
+    }
+  },
+  { flush: 'post' }
+);
+
+// 🚀 Auto-scroll when streaming starts
+watch(
+  () => state.isStreaming,
+  async (isStreaming) => {
+    if (isStreaming) {
+      // Immediately scroll to bottom when streaming starts
+      await nextTick();
+      void scrollToBottom(true); // Force scroll when streaming begins
+      console.log('🌙 Luna: Auto-scrolled to bottom as streaming started');
+    } else {
+      // 🎯 Fix: Auto-focus input when Luna finishes responding
+      await nextTick();
+      if (messageInput.value) {
+        messageInput.value.focus();
+        console.log('🌙 Luna: Input auto-focused for seamless typing');
+      }
+    }
+  },
+  { flush: 'post' }
+);
 </script>
 
 <style scoped>
@@ -484,9 +778,12 @@ watch(() => state.connectionStatus, (status) => {
   display: flex;
   flex-direction: column;
   height: 100%;
+  max-width: 700px; /* 🎯 Fix: Narrower width for better readability */
+  margin: 0 auto; /* Center the chat */
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
   color: #e8e8e8;
   font-family: 'Inter', sans-serif;
+  box-shadow: 0 0 40px rgba(192, 132, 252, 0.2); /* Add subtle glow */
 }
 
 /* Header Styles */
@@ -524,6 +821,24 @@ watch(() => state.connectionStatus, (status) => {
   align-items: center;
   justify-content: center;
   font-size: 1.5rem;
+}
+
+/* 🌙 Luna's Face Images */
+.luna-face {
+  position: absolute;
+  inset: 5px;
+  width: calc(100% - 10px);
+  height: calc(100% - 10px);
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.luna-face-small {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
 .header-info {
@@ -922,25 +1237,111 @@ watch(() => state.connectionStatus, (status) => {
   text-align: center;
 }
 
-/* 🚀 Payment Banner */
+/* 🚀 Enhanced Payment Banner */
 .payment-banner {
   margin-top: 1rem;
-  padding: 1rem;
+  padding: 1.5rem;
   background: linear-gradient(135deg, #f3e8ff, #e0e7ff);
   border: 2px solid #c084fc;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(192, 132, 252, 0.2);
+  border-radius: 16px;
+  box-shadow: 0 8px 25px rgba(192, 132, 252, 0.25);
 }
 
 .payment-content {
   text-align: center;
 }
 
+.payment-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.payment-icon {
+  font-size: 2rem;
+  animation: glow 2s ease-in-out infinite alternate;
+}
+
+.payment-title-section {
+  text-align: left;
+}
+
 .payment-text {
   color: #5b21b6;
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 0;
+  background: linear-gradient(135deg, #7c3aed, #c084fc);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.payment-subtitle {
+  color: #7c3aed;
   font-size: 0.9rem;
-  margin-bottom: 0.75rem;
+  margin: 0;
+  opacity: 0.8;
+}
+
+.payment-benefits {
+  margin-bottom: 1.5rem;
+  text-align: left;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.benefit-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #5b21b6;
+  font-size: 0.9rem;
   font-weight: 500;
+}
+
+.benefit-icon {
+  font-size: 1.1rem;
+  width: 24px;
+  text-align: center;
+}
+
+.payment-offer {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: rgba(124, 58, 237, 0.1);
+  border-radius: 12px;
+  border: 1px solid rgba(124, 58, 237, 0.2);
+}
+
+.offer-price {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.price-label {
+  color: #7c3aed;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.price-amount {
+  color: #5b21b6;
+  font-size: 2rem;
+  font-weight: 800;
+  text-shadow: 0 2px 4px rgba(124, 58, 237, 0.3);
+}
+
+.offer-subtitle {
+  color: #7c3aed;
+  font-size: 0.8rem;
+  font-weight: 500;
+  opacity: 0.9;
 }
 
 .payment-button {
@@ -956,10 +1357,84 @@ watch(() => state.connectionStatus, (status) => {
   box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
 }
 
+.payment-button.enhanced {
+  padding: 1rem 2rem;
+  border-radius: 12px;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: 0 auto;
+  min-height: 50px;
+}
+
 .payment-button:hover {
   background: linear-gradient(135deg, #6d28d9, #a855f7);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);
+}
+
+.button-icon {
+  font-size: 1.2rem;
+}
+
+.button-price {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.payment-guarantee {
+  margin-top: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: #7c3aed;
+  font-size: 0.8rem;
+  font-weight: 500;
+  opacity: 0.9;
+}
+
+.guarantee-icon {
+  font-size: 1rem;
+}
+
+.payment-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
+}
+
+.bdc-link-button {
+  background: transparent;
+  color: #7c3aed;
+  border: 1px solid #7c3aed;
+  padding: 0.75rem 1.5rem;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+}
+
+.bdc-link-button:hover {
+  background: rgba(124, 58, 237, 0.1);
+  border-color: #c084fc;
+  color: #c084fc;
+  transform: translateY(-1px);
+}
+
+.bdc-icon {
+  font-size: 1rem;
 }
 
 .payment-button:active {
@@ -1005,5 +1480,21 @@ watch(() => state.connectionStatus, (status) => {
 .sparkle {
   display: inline-block;
   animation: glow 2s ease-in-out infinite alternate;
+}
+
+/* 🚀 Payment Form Overlay */
+.payment-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(5px);
+  padding: 1rem;
 }
 </style>

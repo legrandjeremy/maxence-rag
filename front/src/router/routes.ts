@@ -27,6 +27,14 @@ const routes: RouteRecordRaw[] = [
     ]
   },
   {
+    path: '/luna-offre',
+    component: () => import('pages/LunaBDCPage.vue'),
+    meta: { 
+      title: 'Luna - Révélations Mystiques Illimitées',
+      description: 'Découvrez les secrets de votre destinée avec Luna, votre guide mystique personnel.'
+    }
+  },
+  {
     path: '/callback',
     component: () => import('pages/CallbackPage.vue'),
   },

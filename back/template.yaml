@@ -368,6 +368,32 @@ Resources:
         Sourcemap: true
         EntryPoints:
           - handlers/payments/stripe-webhook.ts
+
+  CreatePaymentIntentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-luna-front-create-payment-intent
+      CodeUri: src/
+      Handler: handlers/payments/create-payment-intent.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Events:
+        CreatePaymentIntent:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/payments/create-intent
+            Method: POST
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/payments/create-payment-intent.ts
+
   CollectEmailFunction:
     Type: AWS::Serverless::Function
     Properties:

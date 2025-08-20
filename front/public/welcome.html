@@ -587,9 +587,12 @@
             
             // Check if there's an existing chat to continue
             const existingState = checkExistingChatState();
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const isDebugMode = urlParams.get('debug') === 'true';
             
             // Use the new Luna WebSocket streaming page instead of old HTTP chat
-            iframe.src = `/luna-streaming`;
+            iframe.src = `/luna-streaming?debug=${isDebugMode}`;
 
             const overlay = document.getElementById('iframeOverlay');
             overlay.style.display = 'flex';

@@ -21,6 +21,12 @@ export interface LunaStreamingRequest {
   chatId?: string;
   useReasoning?: boolean;
   enableKnowledge?: boolean;
+  customerInfo?: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    birthDate: string;
+  };
 }
 
 export interface LunaStreamingCallbacks {

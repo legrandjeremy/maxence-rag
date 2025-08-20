@@ -292,6 +292,8 @@ AUTH0_DOMAIN=$AUTH0_DOMAIN
 AUTH0_CLIENT_ID=$AUTH0_CLIENT_ID
 LUNA_WS_ENDPOINT=wss://4i704zb47j.execute-api.us-east-1.amazonaws.com/staging/
 VITE_LUNA_WS_ENDPOINT=wss://4i704zb47j.execute-api.us-east-1.amazonaws.com/staging/
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_51RwQBw0Xrngfa9BoEBjNo1ZgnPuNXQmaUpXvTZBJyd6mSz4vnshBVvxqpFUWTjgeY9mVr28zLf6ILfWyYMO34Zwq00if2Y1k5Q
+STRIPE_PUBLISHABLE_KEY=pk_test_51RwQBw0Xrngfa9BoEBjNo1ZgnPuNXQmaUpXvTZBJyd6mSz4vnshBVvxqpFUWTjgeY9mVr28zLf6ILfWyYMO34Zwq00if2Y1k5Q
 EOF
     
     # Generate welcome page with CloudFront domain and API URL

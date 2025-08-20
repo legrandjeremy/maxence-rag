@@ -4,7 +4,6 @@ import {
   lunaWebSocketService
   // LunaStreamingStatus  // Commented out - not used in this file
 } from '../services/lunaWebSocketService';
-import { useAuthStore } from '../stores/authStore'; // 🚀 For payment integration
 
 export interface LunaMessage {
   id: string;
@@ -50,9 +49,66 @@ export function useLunaStreaming() {
   const conversationStartedAt = ref<number | null>(null);
   const isBlockedForPayment = ref(false);
   const isPaid = ref(false);
-  const freeSecondsTotal = 1 * 60; // 1 minute free trial
+  const freeSecondsTotal = 5 * 60; // 5 minutes free trial
   const remainingSeconds = ref<number>(freeSecondsTotal);
   let timerId: number | null = null;
+
+  // 🚀 Payment form state (embedded Stripe form)
+  const showPaymentForm = ref(false);
+
+  // 🚀 Load payment state from localStorage on init
+  const loadPaymentState = () => {
+    try {
+      const savedPaymentState = localStorage.getItem('luna_payment_state');
+      if (savedPaymentState) {
+        const state = JSON.parse(savedPaymentState);
+        if (state.isPaid && state.email) {
+          console.log('🌙 Luna: Restored payment state for:', state.email);
+          isPaid.value = true;
+          isBlockedForPayment.value = false;
+        }
+      }
+
+      const savedTimerState = localStorage.getItem('luna_timer_state');
+      if (savedTimerState) {
+        const timerState = JSON.parse(savedTimerState);
+        if (timerState.startedAt && !isPaid.value) {
+          conversationStartedAt.value = timerState.startedAt;
+          const elapsed = Math.floor((Date.now() - timerState.startedAt) / 1000);
+          remainingSeconds.value = Math.max(0, freeSecondsTotal - elapsed);
+          
+          if (remainingSeconds.value <= 0) {
+            isBlockedForPayment.value = true;
+          }
+        }
+      }
+    } catch (error) {
+      console.error('🚨 Luna: Error loading payment state:', error);
+    }
+  };
+
+  // 🚀 Save payment state to localStorage
+  const savePaymentState = () => {
+    try {
+      const userEmail = localStorage.getItem('guestChat_userEmail') || localStorage.getItem('luna_guest_email');
+      if (userEmail) {
+        localStorage.setItem('luna_payment_state', JSON.stringify({
+          isPaid: isPaid.value,
+          email: userEmail,
+          timestamp: Date.now()
+        }));
+      }
+
+      if (conversationStartedAt.value) {
+        localStorage.setItem('luna_timer_state', JSON.stringify({
+          startedAt: conversationStartedAt.value,
+          timestamp: Date.now()
+        }));
+      }
+    } catch (error) {
+      console.error('🚨 Luna: Error saving payment state:', error);
+    }
+  };
 
   // Computed properties
   const canSendMessage = computed(() => 
@@ -90,6 +146,34 @@ export function useLunaStreaming() {
   // Generate unique message ID
   const generateMessageId = (): string => {
     return `luna_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  };
+
+  // 🚀 Filter out Luna's staging directions during streaming
+  const filterStagingDirections = (content: string): string => {
+    const stagingDirections = [
+      'pause',
+      'silence profond',
+      'silence',
+      'respire profondément',
+      'ferme les yeux',
+      'médite',
+      'se concentre',
+      'souffle mystique',
+      'énergie vibrante',
+      'aura dorée',
+      'lumière blanche'
+    ];
+    
+    let filtered = content;
+    
+    // Remove staging directions (case insensitive)
+    stagingDirections.forEach(direction => {
+      const regex = new RegExp(`\\*\\s*${direction}\\s*\\*`, 'gi');
+      filtered = filtered.replace(regex, '').trim();
+    });
+    
+    // Clean up extra spaces
+    return filtered.replace(/\s+/g, ' ').trim();
   };
 
   // Add user message to conversation
@@ -169,9 +253,10 @@ export function useLunaStreaming() {
 
   // 🚀 Timer and Payment Functions (inspired by GuestChatWidget)
   const startConversationTimer = () => {
-    if (!conversationStartedAt.value) {
+    if (!conversationStartedAt.value && !isPaid.value) {
       conversationStartedAt.value = Date.now();
-      console.log('🌙 Luna: Starting conversation timer (1 minute free)');
+      console.log('🌙 Luna: Starting conversation timer (5 minutes free)');
+      savePaymentState(); // Save initial timer state
       
       // Tick every second to update remaining time
       const tick = () => {
@@ -189,9 +274,15 @@ export function useLunaStreaming() {
         const elapsedSec = Math.floor((Date.now() - conversationStartedAt.value) / 1000);
         remainingSeconds.value = Math.max(0, freeSecondsTotal - elapsedSec);
         
+        // Save state every 10 seconds
+        if (elapsedSec > 0 && elapsedSec % 10 === 0) {
+          savePaymentState();
+        }
+        
         if (remainingSeconds.value <= 0 && !isPaid.value) {
           console.log('🌙 Luna: Free time expired, blocking for payment');
           isBlockedForPayment.value = true;
+          savePaymentState();
           if (timerId) {
             window.clearInterval(timerId);
             timerId = null;
@@ -204,42 +295,15 @@ export function useLunaStreaming() {
     }
   };
 
-  const openPayment = async () => {
-    try {
-      // Get user email from localStorage
-      const userEmail = localStorage.getItem('guestChat_userEmail');
-      
-      if (!userEmail) {
-        console.error('🚨 Luna: No email available for payment');
-        return;
-      }
+  const openPayment = () => {
+    console.log('🌙 Luna: Opening embedded Stripe payment form for €5');
+    showPaymentForm.value = true;
+  };
 
-      console.log('🌙 Luna: Opening Stripe payment for €5');
-      
-      const successUrl = `${window.location.origin}/luna-streaming?payment=success`;
-      const cancelUrl = `${window.location.origin}/luna-streaming?payment=cancel`;
-      
-      const response = await fetch(process.env.API_URL + '/api/payments/checkout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          chatId: `luna_${Date.now()}`, // Generate chat ID for Luna
-          email: userEmail,
-          successUrl,
-          cancelUrl
-        })
-      });
-
-      const data = await response.json();
-      
-      if (data.url) {
-        window.open(data.url, 'stripe_checkout', 'width=480,height=720');
-      }
-    } catch (error) {
-      console.error('🚨 Luna: Failed to open payment:', error);
-    }
+  // 🚀 Close payment form
+  const closePaymentForm = () => {
+    showPaymentForm.value = false;
+    console.log('🌙 Luna: Payment form closed');
   };
 
   const handlePaymentSuccess = () => {
@@ -247,10 +311,61 @@ export function useLunaStreaming() {
     isPaid.value = true;
     isBlockedForPayment.value = false;
     
+    // 🚀 Close payment form
+    closePaymentForm();
+    
     // Stop the timer since payment is confirmed
     if (timerId) {
       window.clearInterval(timerId);
       timerId = null;
+    }
+    
+    // Save payment state immediately
+    savePaymentState();
+    
+    // Clear any payment error messages
+    state.error = null;
+    
+    // Show success message briefly
+    state.error = '✨ Paiement réussi ! Votre consultation avec Luna peut continuer librement.';
+    setTimeout(() => {
+      if (state.error?.includes('Paiement réussi')) {
+        state.error = null;
+      }
+    }, 3000);
+    
+    console.log('🌙 Luna: Chat fully unlocked, ready for unlimited consultation');
+  };
+
+  // 🚀 Handle payment error
+  const handlePaymentError = (error: string) => {
+    console.error('🚨 Luna: Payment error:', error);
+    state.error = `Erreur de paiement: ${error}`;
+    // Keep payment form open for retry
+  };
+
+  // 🚀 Check URL for payment success/cancel (legacy support)
+  const checkPaymentFromURL = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const paymentStatus = urlParams.get('payment');
+    
+    if (paymentStatus === 'success') {
+      console.log('🌙 Luna: Payment success detected from URL');
+      handlePaymentSuccess();
+      
+      // Clean up URL without reloading
+      const url = new URL(window.location.href);
+      url.searchParams.delete('payment');
+      window.history.replaceState({}, '', url.toString());
+    } else if (paymentStatus === 'cancel') {
+      console.log('🌙 Luna: Payment cancelled');
+      closePaymentForm(); // Close form on cancel
+      state.error = 'Paiement annulé. Vous pouvez réessayer quand vous le souhaitez.';
+      
+      // Clean up URL
+      const url = new URL(window.location.href);
+      url.searchParams.delete('payment');
+      window.history.replaceState({}, '', url.toString());
     }
   };
 
@@ -294,8 +409,27 @@ export function useLunaStreaming() {
       clearError();
       
       // 🚀 DUPLICATION FIX: Add user message to UI immediately (but not to conversationHistory for backend)
-      const userMessage = addUserMessage(content);
+      addUserMessage(content);
       
+      // Get customer info for personalized responses
+      let customerInfo = null;
+      try {
+        const customerInfoStr = localStorage.getItem('luna_customer_info');
+        if (customerInfoStr) {
+          customerInfo = JSON.parse(customerInfoStr);
+          console.log('🌙 Luna: Including customer info for personalized response:', {
+            firstName: customerInfo.firstName,
+            lastName: customerInfo.lastName,
+            email: customerInfo.email,
+            birthDate: customerInfo.birthDate
+          });
+        } else {
+          console.warn('🚨 Luna: No customer info found in localStorage - Luna may ask for basic information');
+        }
+      } catch (error) {
+        console.error('🚨 Luna: Error parsing customer info:', error);
+      }
+
       // Prepare streaming request with CURRENT conversationHistory (excludes the message we just added)
       const request: LunaStreamingRequest = {
         content,
@@ -303,11 +437,17 @@ export function useLunaStreaming() {
         userEmail: options.userEmail,
         ...(options.chatId && { chatId: options.chatId }),
         useReasoning: options.useReasoning || false,
-        enableKnowledge: options.enableKnowledge !== false // Default to true
+        enableKnowledge: options.enableKnowledge !== false, // Default to true
+        ...(customerInfo && { customerInfo })
       };
 
-      // Set initial state
-      state.connectionStatus = 'connecting';
+      // Set initial state (keep connected status to reassure customer)
+      // Don't change connectionStatus to 'connecting' during streaming
+      if (state.connectionStatus === 'disconnected' || state.connectionStatus === 'error') {
+        state.connectionStatus = 'connecting';
+      }
+      // Keep 'connected' status during streaming to reassure customer
+      
       state.isStreaming = true;
       state.isReasoning = options.useReasoning || false;
       state.currentMessage = '';
@@ -320,12 +460,17 @@ export function useLunaStreaming() {
       await lunaWebSocketService.sendStreamingMessage(request, {
         onStream: (token: string) => {
           state.currentMessage += token;
-          updateLastAssistantMessage(state.currentMessage, state.currentReasoning);
+          // 🚀 Filter staging directions from streaming content
+          const filteredMessage = filterStagingDirections(state.currentMessage);
+          updateLastAssistantMessage(filteredMessage, state.currentReasoning);
         },
 
         onReasoning: (reasoning: string) => {
           state.currentReasoning += reasoning;
-          updateLastAssistantMessage(state.currentMessage, state.currentReasoning);
+          // 🚀 Filter staging directions from reasoning content
+          const filteredReasoning = filterStagingDirections(state.currentReasoning);
+          const filteredMessage = filterStagingDirections(state.currentMessage);
+          updateLastAssistantMessage(filteredMessage, filteredReasoning);
         },
 
         onComplete: (result) => {
@@ -337,10 +482,14 @@ export function useLunaStreaming() {
 
           // 🚀 User message already in UI, just finalize the assistant response
 
+          // 🚀 Filter staging directions from final completion
+          const filteredCompletion = filterStagingDirections(result.completion);
+          const filteredReasoning = filterStagingDirections(state.currentReasoning);
+
           // Final update to message
           updateLastAssistantMessage(
-            result.completion,
-            state.currentReasoning,
+            filteredCompletion,
+            filteredReasoning,
             true,
             result.token_count,
             result.price
@@ -495,6 +644,7 @@ export function useLunaStreaming() {
     isBlockedForPayment,
     isPaid,
     remainingSeconds,
+    showPaymentForm,
     
     // Methods
     sendMessageToLuna,
@@ -507,7 +657,49 @@ export function useLunaStreaming() {
     getConversationSummary,
     startConversationTimer,
     openPayment,
+    closePaymentForm,
     handlePaymentSuccess,
-    loadConversation
+    handlePaymentError,
+    loadConversation,
+    loadPaymentState,
+    savePaymentState,
+    checkPaymentFromURL
   };
-}
+};
+
+// 🚀 Initialize payment state when composable is imported
+// This ensures state is loaded as soon as the composable is used
+
+// 🚀 Add page close handling for chat history cleanup
+export const setupLunaPageCloseHandler = () => {
+  const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+    // Ask user for confirmation
+    const message = 'Êtes-vous sûr de vouloir quitter ? Votre conversation avec Luna sera supprimée.';
+    event.returnValue = message;
+    return message;
+  };
+
+  const handleUnload = () => {
+    // Clear Luna chat data
+    try {
+      localStorage.removeItem('guestChat_userEmail');
+      localStorage.removeItem('luna_customer_info');
+      localStorage.removeItem('luna_conversation_history');
+      localStorage.removeItem('luna_timer_state');
+      // Keep payment state for future sessions
+      console.log('🌙 Luna: Chat history and customer info cleared on page close');
+    } catch (error) {
+      console.error('🚨 Luna: Error clearing chat history:', error);
+    }
+  };
+
+  // Add event listeners
+  window.addEventListener('beforeunload', handleBeforeUnload);
+  window.addEventListener('unload', handleUnload);
+
+  // Return cleanup function
+  return () => {
+    window.removeEventListener('beforeunload', handleBeforeUnload);
+    window.removeEventListener('unload', handleUnload);
+  };
+};
