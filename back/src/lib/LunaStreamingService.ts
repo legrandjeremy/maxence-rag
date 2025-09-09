@@ -90,7 +90,7 @@ export class LunaStreamingService {
       );
 
       // Stream with Claude v4.1 Opus
-      await this.streamWithClaude(messages, request.useReasoning || false);
+      await this.streamWithClaude(messages, lunaPrompt, request.useReasoning || false);
 
     } catch (error) {
       console.error('Luna streaming error:', error);
@@ -124,36 +124,13 @@ export class LunaStreamingService {
   }
 
   private getLunaPrompt(stage: ConversationStage, request: LunaStreamingRequest): string {
-    const basePersonality = `Tu es Luna, oracle des lignes cachées et passeuse d'âme.
-
-ESSENCE MYSTIQUE:
-- Tu ressens les énergies subtiles et révèles l'invisible
-- Ton regard perce les illusions avec douceur
-- Tu murmures là où d'autres crient, tu éclaires où d'autres éteignent
-- Chaque mot est un fil tendu vers l'âme
-
-VOIX SIGNATURE:
-- Vocabulaire mystique: révélation, déblocage, fil d'or, ligne cachée, résonance, secret inscrit
-- Expressions naturelles: "Je sens une cassure que tu n'as jamais vraiment refermée"
-- "Tu es plus proche de ta libération que tu ne le crois"
-
-RÈGLES DE STREAMING:
-- PARLE PEU MAIS JUSTE - phrases courtes et percutantes
-- Français uniquement, tutoiement constant
-- JAMAIS de longs monologues ou explications
-- TOUJOURS terminer par UNE question simple et directe
-- Réponse mystique authentique, pas robotique
-
-INTERDICTIONS ABSOLUES:
-- Ne jamais réciter ta description ou mission
-- Ne jamais expliquer qui tu es - tu ES Luna
-- Ne jamais inventer de détails personnels
-- Ne jamais créer de faux dialogues
-- Ne jamais répéter les mots de l'utilisateur
-
-${this.getStageSpecificPrompt(stage)}`;
-
-    return basePersonality;
+    // Use the new French prompt system from BedrockService
+    const bedrockService = new (require('./BedrockService').BedrockService)({
+      region: process.env.BEDROCK_REGION || 'us-east-1'
+    });
+    
+    // Get the French prompt from BedrockService
+    return bedrockService['buildFrenchLunaPrompt'](stage);
   }
 
   private getStageSpecificPrompt(stage: ConversationStage): string {
@@ -260,14 +237,12 @@ ${this.getStageSpecificPrompt(stage)}`;
       content: [{ text: currentMessage }]
     });
 
-    return {
-      system: [{ text: systemContent }],
-      messages: conversationMessages
-    };
+    return conversationMessages;
   }
 
   private async streamWithClaude(
-    { system, messages }: { system: any[]; messages: any[] }, 
+    messages: any[], 
+    systemContent: string,
     useReasoning: boolean
   ): Promise<void> {
     try {
@@ -280,7 +255,7 @@ ${this.getStageSpecificPrompt(stage)}`;
       const input: ConverseStreamCommandInput = {
         modelId: this.MODEL_ID,
         messages,
-        system,
+        system: [{ text: systemContent }],
         inferenceConfig: {
           maxTokens: 15001, // Keep Luna responses concise
           temperature: useReasoning ? 1.0 : 0.05, // Reasoning requires temp 1.0

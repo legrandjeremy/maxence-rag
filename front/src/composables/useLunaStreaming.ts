@@ -49,7 +49,7 @@ export function useLunaStreaming() {
   const conversationStartedAt = ref<number | null>(null);
   const isBlockedForPayment = ref(false);
   const isPaid = ref(false);
-  const freeSecondsTotal = 5 * 60; // 5 minutes free trial
+  const freeSecondsTotal = 7 * 60; // 5 minutes free trial
   const remainingSeconds = ref<number>(freeSecondsTotal);
   let timerId: number | null = null;
 
@@ -255,7 +255,6 @@ export function useLunaStreaming() {
   const startConversationTimer = () => {
     if (!conversationStartedAt.value && !isPaid.value) {
       conversationStartedAt.value = Date.now();
-      console.log('🌙 Luna: Starting conversation timer (5 minutes free)');
       savePaymentState(); // Save initial timer state
       
       // Tick every second to update remaining time
@@ -296,7 +295,7 @@ export function useLunaStreaming() {
   };
 
   const openPayment = () => {
-    console.log('🌙 Luna: Opening embedded Stripe payment form for €5');
+    console.log('🌙 Luna: Opening embedded Stripe payment form for €9');
     showPaymentForm.value = true;
   };
 
@@ -396,7 +395,7 @@ export function useLunaStreaming() {
       
       // 🚀 Check if blocked for payment
       if (isBlockedForPayment.value && !isPaid.value) {
-        state.error = 'La session gratuite est terminée. Veuillez régler 5 € pour continuer.';
+        state.error = 'La session gratuite est terminée. Veuillez régler 9 € pour continuer.';
         return;
       }
       

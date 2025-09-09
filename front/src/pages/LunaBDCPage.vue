@@ -25,7 +25,7 @@
             <button @click="startConsultation" class="cta-button primary">
               <span class="cta-icon">🔮</span>
               Commencer ma consultation
-              <span class="cta-badge">5 min gratuit</span>
+              <span class="cta-badge">7 min gratuit</span>
             </button>
           </div>
         </div>
@@ -250,7 +250,7 @@
             <div class="pricing-header">
               <div class="pricing-icon">🔮</div>
               <h3 class="pricing-title">Consultation Illimitée</h3>
-              <div class="pricing-amount">5,00 €</div>
+              <div class="pricing-amount">9,00 €</div>
               <div class="pricing-subtitle">Paiement unique • Accès à vie</div>
             </div>
             
@@ -402,7 +402,7 @@
           </p>
           <div class="cta-urgency">
             <span class="urgency-icon">⚡</span>
-            <span class="urgency-text">Commencez votre consultation maintenant - 5 minutes gratuites</span>
+            <span class="urgency-text">Commencez votre consultation maintenant - 7 minutes gratuites</span>
           </div>
           <button @click="startConsultation" class="final-cta-button">
             <span class="cta-icon">🔮</span>

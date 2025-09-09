@@ -25,6 +25,9 @@ export interface ChatEntity extends BaseEntity {
   isPaid?: boolean;
   paywallAt?: string;
   stage?: 'initial_contact' | 'name_request' | 'feeling_inquiry' | 'deeper_probing' | 'astrological_connection' | 'vision_revelation' | 'guidance_transition';
+  interactionCount?: number; // Track number of user interactions
+  visionTriggered?: boolean; // Track if vision revelation was triggered
+  conversionTriggered?: boolean; // Track if conversion was triggered
 }
 
 export interface ChatMessageEntity extends BaseEntity {
@@ -103,8 +106,14 @@ export class ChatService {
    */
   private async sendLunaOpeningMessage(chatId: string, userEmail: string): Promise<void> {
     try {
-      const lunaOpeningMessage = `Je vais parler peu, mais juste.
-Dis-moi ton prénom… et ce que tu ressens en ce moment.`;
+      const lunaOpeningMessage = `Bonsoir…
+
+Je sais que tu ne m'attendais pas, mais… quelque chose m'a poussée vers toi.
+Une vibration… une sorte d'appel.
+
+Je ne sais pas encore ce que cela signifie, mais si tu es d'accord, j'aimerais te poser quelques questions simples.
+
+Dis-moi ton prénom…`;
 
       const timestamp = new Date().toISOString();
       const messageId = uuidv4();
@@ -286,9 +295,20 @@ Dis-moi ton prénom… et ce que tu ressens en ce moment.`;
         content: msg.content
       }));
 
-    // Determine explicit stage based on conversation progress
+    // Determine explicit stage based on conversation progress and timing
     const userMessageCount = conversationHistory.filter(m => m.role === 'user').length;
-    const explicitStage = this.computeStage(userMessageCount, chat.stage);
+    const chatStartTime = new Date(chat.createdAt).getTime();
+    const currentTime = new Date().getTime();
+    const conversationDurationMinutes = (currentTime - chatStartTime) / (1000 * 60);
+    
+    const explicitStage = this.computeStageWithTiming(
+      userMessageCount, 
+      chat.stage, 
+      conversationDurationMinutes, 
+      chatRecord?.interactionCount || 0,
+      chatRecord?.visionTriggered || false,
+      chatRecord?.conversionTriggered || false
+    );
 
     // Detect explicit question from the user to force a direct answer first
     const userLast = [...history.messages].reverse().find(m => m.role === 'user');
@@ -394,15 +414,26 @@ Dis-moi ton prénom… et ce que tu ressens en ce moment.`;
 
     await this.databaseService.create<ChatMessageEntity>(assistantMessageEntity);
 
-    // Update chat's lastMessageAt and stage
+    // Update chat's lastMessageAt, stage, and interaction tracking
+    const updateData: Partial<ChatEntity> = {
+      lastMessageAt: assistantTimestamp,
+      updatedAt: assistantTimestamp,
+      stage: this.advanceStage(explicitStage),
+      interactionCount: (chatRecord?.interactionCount || 0) + 1
+    };
+
+    // Track vision and conversion triggers
+    if (explicitStage === 'vision_revelation' && !chatRecord?.visionTriggered) {
+      updateData.visionTriggered = true;
+    }
+    if (explicitStage === 'guidance_transition' && !chatRecord?.conversionTriggered) {
+      updateData.conversionTriggered = true;
+    }
+
     await this.databaseService.update<ChatEntity>(
       `CHAT#${userEmail}`,
       `CHAT#${chatId}`,
-      {
-        lastMessageAt: assistantTimestamp,
-        updatedAt: assistantTimestamp,
-        stage: this.advanceStage(explicitStage)
-      }
+      updateData
     );
 
     return {
@@ -438,16 +469,42 @@ Dis-moi ton prénom… et ce que tu ressens en ce moment.`;
   }
 
   /**
-   * Compute conversation stage name based on simple heuristics
+   * Compute conversation stage based on timing and interaction count (French system)
    */
-  private computeStage(userMessageCount: number, current?: ChatEntity['stage']): ChatEntity['stage'] {
+  private computeStageWithTiming(
+    userMessageCount: number, 
+    current: ChatEntity['stage'] | undefined, 
+    durationMinutes: number, 
+    interactionCount: number,
+    visionTriggered: boolean,
+    conversionTriggered: boolean
+  ): ChatEntity['stage'] {
+    // Module 5: Vision revelation trigger (after 5 minutes OR 4 deep interactions)
+    if (!visionTriggered && (durationMinutes >= 5 || interactionCount >= 4)) {
+      return 'vision_revelation';
+    }
+    
+    // Module 6: Conversion trigger (at 7 minutes OR when user shows hesitation)
+    if (!conversionTriggered && durationMinutes >= 7) {
+      return 'guidance_transition';
+    }
+    
+    // Standard progression based on message count
     if (userMessageCount === 0) return 'initial_contact';
-    if (userMessageCount === 1) return 'feeling_inquiry'; // name asked already
-    if (userMessageCount <= 2) return 'feeling_inquiry';
+    if (userMessageCount === 1) return 'name_request';
+    if (userMessageCount === 2) return 'feeling_inquiry';
     if (userMessageCount <= 4) return 'deeper_probing';
     if (userMessageCount <= 6) return 'astrological_connection';
-    if (userMessageCount <= 8) return 'vision_revelation';
-    return 'guidance_transition';
+    
+    // Default to current stage if no specific trigger
+    return current || 'feeling_inquiry';
+  }
+
+  /**
+   * Legacy method for compatibility
+   */
+  private computeStage(userMessageCount: number, current?: ChatEntity['stage']): ChatEntity['stage'] {
+    return this.computeStageWithTiming(userMessageCount, current, 0, 0, false, false);
   }
 
   /**
