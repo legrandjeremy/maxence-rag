@@ -91,7 +91,7 @@
       <div class="payment-section">
         <div class="payment-info">
           <div class="payment-amount">
-            <span class="amount-label">Abonnement mensuel:</span>
+            <span class="amount-label">Accès prolongé Luna:</span>
             <span class="amount-value">9,00 €</span>
           </div>
         </div>
@@ -148,7 +148,7 @@
             </div>
             <div class="security-item">
               <span class="security-icon">✅</span>
-              <span>Vous pouvez annuler votre abonnement à tout moment, sans justification</span>
+              <span>Accès immédiat et illimité après paiement</span>
             </div>
           </div>
         </div>
@@ -168,7 +168,7 @@
       <!-- Legal mentions -->
       <div class="legal-section">
         <p class="legal-text">
-          Offre sans engagement. Abonnement résiliable à tout moment via l'espace client.
+          Paiement unique. Accès immédiat et permanent après validation.
           Paiement géré par un prestataire certifié PCI DSS. Accès immédiat après validation.
           Aucun conseil médical, juridique ou professionnel n'est délivré par l'IA Luna.
         </p>
@@ -185,10 +185,12 @@ import type { Stripe, StripeElements, StripeCardElement } from '@stripe/stripe-j
 // Props and emits
 interface Props {
   userEmail?: string;
+  chatId?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  userEmail: ''
+  userEmail: '',
+  chatId: ''
 });
 
 const emit = defineEmits<{
@@ -330,7 +332,8 @@ const handleSubmit = async () => {
         email: email.value,
         amount: 900, // 9 EUR in cents
         currency: 'eur',
-        description: 'Luna - Abonnement mensuel'
+        description: 'Luna - Accès prolongé',
+        chatId: localStorage.getItem('luna_database_chat_id') || props.chatId || localStorage.getItem('luna_current_session_id') || undefined
       })
     });
 
@@ -356,6 +359,33 @@ const handleSubmit = async () => {
       // Simulate payment processing delay
       await new Promise(resolve => setTimeout(resolve, 2000));
       
+      // Manually mark chat as paid (since no webhook in dev mode)
+      // Priority: database chat ID > Luna session ID (props.chatId)
+      const chatId = localStorage.getItem('luna_database_chat_id') || props.chatId || localStorage.getItem('luna_current_session_id');
+      if (chatId && email.value) {
+        try {
+          console.log('🌙 Dev Mode: Manually marking chat as paid:', { chatId, email: email.value });
+          const markPaidResponse = await fetch((import.meta.env.VITE_API_URL || 'http://localhost:3000') + '/api/guest-chat/mark-paid', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              chatId: chatId,
+              email: email.value
+            })
+          });
+          
+          if (markPaidResponse.ok) {
+            console.log('✅ Dev Mode: Chat marked as paid successfully');
+          } else {
+            console.error('🚨 Dev Mode: Failed to mark chat as paid:', await markPaidResponse.text());
+          }
+        } catch (error) {
+          console.error('🚨 Dev Mode: Error marking chat as paid:', error);
+        }
+      }
+      
       // Simulate successful payment
       console.log('✅ Stripe: Mock payment succeeded:', client_secret);
       emit('payment-success');
@@ -377,6 +407,34 @@ const handleSubmit = async () => {
         emit('payment-error', error.message || 'Erreur de paiement');
       } else if (paymentIntent && paymentIntent.status === 'succeeded') {
         console.log('✅ Stripe: Payment succeeded:', paymentIntent.id);
+        
+        // Backup: Manually mark chat as paid (in case webhook fails)
+        // Priority: database chat ID > Luna session ID (props.chatId)
+        const chatId = localStorage.getItem('luna_database_chat_id') || props.chatId || localStorage.getItem('luna_current_session_id');
+        if (chatId && email.value) {
+          try {
+            console.log('🌙 Backup: Manually marking chat as paid:', { chatId, email: email.value });
+            const markPaidResponse = await fetch((import.meta.env.VITE_API_URL || 'http://localhost:3000') + '/api/guest-chat/mark-paid', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                chatId: chatId,
+                email: email.value
+              })
+            });
+            
+            if (markPaidResponse.ok) {
+              console.log('✅ Backup: Chat marked as paid successfully');
+            } else {
+              console.error('🚨 Backup: Failed to mark chat as paid:', await markPaidResponse.text());
+            }
+          } catch (error) {
+            console.error('🚨 Backup: Error marking chat as paid:', error);
+          }
+        }
+        
         emit('payment-success');
       }
     }

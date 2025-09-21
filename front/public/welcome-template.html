@@ -653,6 +653,108 @@
             }
         });
 
+        // 🌙 Token-based signin handling for email links
+        async function handleTokenSignin() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+            const chatId = urlParams.get('chat');
+            
+            if (token) {
+                console.log('🌙 Luna: Token found in URL, validating...', { token: token.substring(0, 8) + '...', chatId });
+                
+                try {
+                    // Show loading state
+                    const loadingDiv = document.createElement('div');
+                    loadingDiv.innerHTML = `
+                        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 10000;">
+                            <div style="background: white; padding: 2rem; border-radius: 15px; text-align: center; max-width: 400px;">
+                                <div style="font-size: 2rem; margin-bottom: 1rem;">🌙</div>
+                                <div style="font-size: 1.2rem; color: #8b5cf6; margin-bottom: 0.5rem;">Connexion mystique en cours...</div>
+                                <div style="color: #6b7280;">Validation de votre lien sécurisé</div>
+                                <div style="color: #9ca3af; font-size: 0.875rem; margin-top: 0.5rem;">Token: ${token.substring(0, 8)}...</div>
+                            </div>
+                        </div>
+                    `;
+                    document.body.appendChild(loadingDiv);
+                    
+                    // Validate token with backend
+                    console.log('🌙 Luna: Calling validation endpoint:', `/api/guest-chat/validate-token/${token}`);
+                    const response = await fetch(`${API_BASE_URL}/api/guest-chat/validate-token/${token}`);
+                    console.log('🌙 Luna: Response status:', response.status);
+                    const data = await response.json();
+                    console.log('🌙 Luna: Response data:', data);
+                    
+                    if (response.ok && data.data) {
+                        console.log('🌙 Luna: Token validated successfully', data.data);
+                        
+                        // Store user email and chat info
+                        localStorage.setItem('guestChat_userEmail', data.data.email);
+                        
+                        if (data.data.specificChat) {
+                            // Store specific chat info for loading
+                            localStorage.setItem('luna_signin_chat', JSON.stringify(data.data.specificChat));
+                            console.log('🌙 Luna: Stored specific chat:', data.data.specificChat);
+                        }
+                        
+                        // Clear URL parameters to avoid reprocessing
+                        const cleanUrl = window.location.pathname;
+                        window.history.replaceState({}, document.title, cleanUrl);
+                        
+                        // Remove loading state
+                        document.body.removeChild(loadingDiv);
+                        
+                        // Redirect to Luna streaming page
+                        console.log('🌙 Luna: Redirecting to /luna-streaming');
+                        window.location.href = '/luna-streaming';
+                        
+                    } else {
+                        console.error('🚨 Luna: Token validation failed', data);
+                        document.body.removeChild(loadingDiv);
+                        
+                        // Show error message
+                        const errorDiv = document.createElement('div');
+                        errorDiv.innerHTML = `
+                            <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 10000;">
+                                <div style="background: white; padding: 2rem; border-radius: 15px; text-align: center; max-width: 400px;">
+                                    <div style="font-size: 2rem; margin-bottom: 1rem;">⚠️</div>
+                                    <div style="font-size: 1.2rem; color: #dc2626; margin-bottom: 0.5rem;">Lien expiré ou invalide</div>
+                                    <div style="color: #6b7280; margin-bottom: 1rem;">Ce lien de connexion n'est plus valide.</div>
+                                    <div style="color: #9ca3af; font-size: 0.875rem; margin-bottom: 1.5rem;">Token: ${token.substring(0, 8)}... | Chat: ${chatId || 'N/A'}</div>
+                                    <button onclick="window.location.href='/luna-streaming'" style="background: #8b5cf6; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 8px; cursor: pointer;">
+                                        Aller à Luna
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                        document.body.appendChild(errorDiv);
+                    }
+                    
+                } catch (error) {
+                    console.error('🚨 Luna: Error validating token', error);
+                    
+                    // Show error message
+                    const errorDiv = document.createElement('div');
+                    errorDiv.innerHTML = `
+                        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 10000;">
+                            <div style="background: white; padding: 2rem; border-radius: 15px; text-align: center; max-width: 400px;">
+                                <div style="font-size: 2rem; margin-bottom: 1rem;">❌</div>
+                                <div style="font-size: 1.2rem; color: #dc2626; margin-bottom: 0.5rem;">Erreur de connexion</div>
+                                <div style="color: #6b7280; margin-bottom: 1rem;">Impossible de valider le lien.</div>
+                                <div style="color: #9ca3af; font-size: 0.875rem; margin-bottom: 1.5rem;">Error: ${error.message}</div>
+                                <button onclick="window.location.href='/luna-streaming'" style="background: #8b5cf6; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 8px; cursor: pointer;">
+                                    Aller à Luna
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    document.body.appendChild(errorDiv);
+                }
+            }
+        }
+        
+        // Check for token on page load
+        document.addEventListener('DOMContentLoaded', handleTokenSignin);
+
         // Persistent session handling - preserve user data across page refreshes
         window.addEventListener('beforeunload', function(event) {
             // Backup session data for recovery instead of clearing

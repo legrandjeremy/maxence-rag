@@ -23,7 +23,8 @@ export type EntityType =
   | 'TEAM'
   | 'TEAM_MEMBER'
   | 'CHAT'
-  | 'CHAT_MESSAGE';
+  | 'CHAT_MESSAGE'
+  | 'SIGNIN_TOKEN';
 
 // Base interface for all entities
 export interface BaseEntity {

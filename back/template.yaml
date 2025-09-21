@@ -378,6 +378,31 @@ Resources:
         EntryPoints:
           - handlers/payments/stripe-webhook.ts
 
+  TestWebhookFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-luna-front-test-webhook
+      CodeUri: src/
+      Handler: handlers/payments/test-webhook.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Events:
+        TestWebhook:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/payments/test-webhook
+            Method: POST
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/payments/test-webhook.ts
+
   CreatePaymentIntentFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -730,6 +755,35 @@ Resources:
         Sourcemap: true
         EntryPoints:
           - handlers/guest-chat/send-signin-email.ts
+
+  MarkChatPaidFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-luna-front-mark-chat-paid
+      CodeUri: src/
+      Handler: handlers/guest-chat/mark-chat-paid.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
+      Events:
+        MarkChatPaid:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/guest-chat/mark-paid
+            Method: POST
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/guest-chat/mark-chat-paid.ts
 
   # User Management Functions
   CreateUserFunction:

@@ -445,8 +445,8 @@ onMounted(() => {
   console.log('🌙 Luna Streaming Page initialized PROCESS ENV');
   console.log(process.env)
 
-  // Generate new chat ID
-  currentChatId.value = `luna_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  // Don't generate chat ID here - let the backend generate it when conversation is saved
+  // currentChatId will be set when the conversation is first saved to database
 
   console.log('🌙 Luna Streaming Page initialized');
 });

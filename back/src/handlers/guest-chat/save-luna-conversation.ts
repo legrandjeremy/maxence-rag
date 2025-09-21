@@ -36,12 +36,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       });
     }
 
-    if (!lunaSessionId && !databaseChatId) {
-      return createResponse(400, { 
-        error: 'Bad Request', 
-        message: 'Either Luna session ID or database chat ID is required' 
-      });
-    }
+    // For new conversations, we don't require either ID - backend will generate one
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return createResponse(400, { 
@@ -76,7 +71,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       }
       console.log(`Continuing existing chat: ${databaseChatId}`);
     } else if (lunaSessionId) {
-      // New Luna session - check if we already have a chat for this session
+      // Legacy Luna session - check if we already have a chat for this session
       chat = await chatService.getLunaChatBySessionId(userEmail, lunaSessionId);
       
       if (!chat) {
@@ -88,6 +83,12 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       } else {
         console.log(`Found existing Luna chat: ${chat.id} for session: ${lunaSessionId}`);
       }
+    } else {
+      // New conversation - create new chat without Luna session ID
+      chat = await chatService.createLunaChat(userEmail, undefined, {
+        title: title || `Consultation Luna ${new Date().toLocaleDateString('fr-FR')}`
+      });
+      console.log(`Created new chat: ${chat.id} for new conversation`);
     }
 
     // Clear any existing messages for this chat to avoid duplicates

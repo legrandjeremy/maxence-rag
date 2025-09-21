@@ -149,9 +149,9 @@ export function useLunaStreaming() {
     isBlockedForPayment.value && !isPaid.value
   );
 
-  // Generate unique message ID
+  // Generate unique message ID (using simple timestamp-based ID)
   const generateMessageId = (): string => {
-    return `luna_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   };
 
   // 🚀 Filter out Luna's staging directions during streaming
@@ -691,19 +691,21 @@ export function useLunaStreaming() {
         // Continuing existing conversation
         conversationData.databaseChatId = databaseChatId;
         console.log('🌙 Luna: Saving to existing database chat:', databaseChatId);
-      } else if (storedSessionId) {
-        // Use stored session ID
-        conversationData.lunaSessionId = storedSessionId;
-        console.log('🌙 Luna: Saving with stored session ID:', storedSessionId);
       } else {
-        // New session
-        conversationData.lunaSessionId = chatId;
-        console.log('🌙 Luna: Saving with new session ID:', chatId);
+        // New conversation - let backend generate the chat ID
+        // Don't use Luna session IDs anymore
+        console.log('🌙 Luna: Creating new conversation - backend will generate chat ID');
       }
 
       // Import api dynamically to avoid circular dependencies
       const { api } = await import('../services/api');
-      await api.post('/api/guest-chat/save-conversation', conversationData);
+      const response = await api.post('/api/guest-chat/save-conversation', conversationData);
+      
+      // Store the database chatId returned from the API
+      if (response.data?.data?.chatId) {
+        localStorage.setItem('luna_database_chat_id', response.data.data.chatId);
+        console.log('🌙 Luna: Stored database chatId:', response.data.data.chatId);
+      }
       
       console.log('🌙 Luna: Conversation auto-saved to database');
     } catch (error) {

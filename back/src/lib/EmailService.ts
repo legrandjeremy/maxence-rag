@@ -12,6 +12,12 @@ export interface SigninEmailData {
   chatCount: number;
   specificChatTitle?: string;
   expiresAt: string;
+  chats?: Array<{
+    id: string;
+    title: string;
+    lastMessageAt: string;
+    signinUrl: string;
+  }>;
 }
 
 export class EmailService {
@@ -164,11 +170,38 @@ export class EmailService {
                 <strong>✨ Accès:</strong> Connexion sécurisée en un clic
             </div>
             
-            <div style="text-align: center;">
-                <a href="${data.signinUrl}" class="signin-button">
-                    🔮 Accéder à ma consultation Luna
-                </a>
-            </div>
+            ${data.chats && data.chats.length > 1 ? `
+                <div style="margin: 20px 0;">
+                    <h3 style="color: #8b5cf6; margin-bottom: 15px; text-align: center;">Choisissez votre consultation :</h3>
+                    ${data.chats.map(chat => {
+                        const chatDate = new Date(chat.lastMessageAt).toLocaleDateString('fr-FR', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            timeZone: 'Europe/Paris'
+                        });
+                        return `
+                            <div style="margin: 10px 0; border: 1px solid #8b5cf6; border-radius: 8px; overflow: hidden;">
+                                <div style="padding: 15px; background: linear-gradient(135deg, #f3e8ff, #e0e7ff);">
+                                    <div style="font-weight: bold; color: #581c87; margin-bottom: 5px;">${chat.title}</div>
+                                    <div style="font-size: 14px; color: #6b7280; margin-bottom: 10px;">Dernière activité: ${chatDate} (Europe/Paris)</div>
+                                    <a href="${chat.signinUrl}" style="display: inline-block; background: linear-gradient(135deg, #8b5cf6, #a855f7); color: white; text-decoration: none; padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: 500;">
+                                        🔮 Continuer cette consultation
+                                    </a>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            ` : `
+                <div style="text-align: center;">
+                    <a href="${data.signinUrl}" class="signin-button">
+                        🔮 Accéder à ma consultation Luna
+                    </a>
+                </div>
+            `}
             
             <div class="expiration">
                 ⏰ <strong>Important:</strong> Ce lien expire le ${expirationTime} pour votre sécurité.
@@ -202,8 +235,23 @@ ${data.specificChatTitle
     : `📚 Vos consultations: ${data.chatCount} conversation${data.chatCount > 1 ? 's' : ''} disponible${data.chatCount > 1 ? 's' : ''}`
 }
 
-🔮 Accédez à votre consultation:
-${data.signinUrl}
+${data.chats && data.chats.length > 1 ? `
+🔮 Choisissez votre consultation:
+
+${data.chats.map((chat, index) => {
+    const chatDate = new Date(chat.lastMessageAt).toLocaleDateString('fr-FR', {
+        day: 'numeric',
+        month: 'short',
+        year: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Europe/Paris'
+    });
+    return `${index + 1}. ${chat.title} (${chatDate})
+   ${chat.signinUrl}`;
+}).join('\n\n')}
+` : `🔮 Accédez à votre consultation:
+${data.signinUrl}`}
 
 ⏰ Important: Ce lien expire le ${expirationTime} pour votre sécurité.
 

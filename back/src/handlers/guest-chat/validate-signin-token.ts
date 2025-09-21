@@ -24,13 +24,21 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       });
     }
 
-    // Get user's chats
-    const userChats = await chatService.getUserChats(tokenData.email, 20);
+    // Get user's paid chats only
+    const userChats = await chatService.getUserChats(tokenData.email, 20, true);
 
-    // If specific chat was requested, get its details
+    // If specific chat was requested, get its details and verify it's paid
     let specificChat = null;
     if (tokenData.chatId) {
       specificChat = await chatService.getChatById(tokenData.email, tokenData.chatId);
+      
+      // Verify the specific chat is paid
+      if (specificChat && !specificChat.isPaid) {
+        return createResponse(403, { 
+          error: 'Forbidden', 
+          message: 'Only paid conversations can be accessed via email signin' 
+        });
+      }
     }
 
     console.log(`Token validated successfully for email: ${tokenData.email}`);

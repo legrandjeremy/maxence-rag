@@ -5,6 +5,7 @@ interface CreatePaymentIntentRequest {
   amount: number; // in cents
   currency: string;
   description?: string;
+  chatId?: string;
 }
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -36,7 +37,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       };
     }
 
-    const { email, amount, currency = 'eur', description = 'Luna - Consultation' }: CreatePaymentIntentRequest = JSON.parse(event.body);
+    const { email, amount, currency = 'eur', description = 'Luna - Consultation', chatId }: CreatePaymentIntentRequest = JSON.parse(event.body);
 
     if (!email || !amount) {
       return {
@@ -46,7 +47,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       };
     }
 
-    console.log('🌙 Creating payment intent for:', { email, amount, currency });
+    console.log('🌙 Creating payment intent for:', { email, amount, currency, chatId });
 
     // DEVELOPMENT MODE: Return a mock client_secret
     // In production, you'll want to use the actual Stripe SDK here
@@ -65,7 +66,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       receipt_email: email,
       metadata: {
         email,
-        service: 'luna_consultation'
+        service: 'luna_consultation',
+        ...(chatId && { chatId })
       }
     });
 

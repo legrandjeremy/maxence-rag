@@ -6,6 +6,7 @@ export interface Chat {
   updatedAt: string;
   lastMessageAt: string;
   isActive: boolean;
+  isPaid?: boolean;
   // Persisted conversation stage to guide Luna's behavior
   stage?: 'initial_contact' | 'name_request' | 'feeling_inquiry' | 'deeper_probing' | 'astrological_connection' | 'vision_revelation' | 'guidance_transition';
 }

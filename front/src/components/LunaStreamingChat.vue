@@ -257,6 +257,7 @@ Cliquez maintenant pour rejoindre les âmes qui ont décidé d'avancer.</span>
     <div v-if="showPaymentForm" class="payment-overlay" @click.self="closePaymentForm">
       <StripePaymentForm
         :user-email="userEmailForPayment"
+        :chat-id="currentChatId"
         @payment-success="handlePaymentSuccess"
         @payment-error="handlePaymentError"
         @close="closePaymentForm"
@@ -410,6 +411,15 @@ const userEmailForPayment = computed(() => {
   
   // Fallback to guest chat email
   return localStorage.getItem('guestChat_userEmail') || '';
+});
+
+const currentChatId = computed(() => {
+  // Priority: database chat ID > stored session ID
+  // The database chat ID is the UUID that gets stored in DynamoDB
+  // We no longer use props.chatId as it was a Luna session ID
+  return localStorage.getItem('luna_database_chat_id') || 
+         localStorage.getItem('luna_current_session_id') || 
+         '';
 });
 
 // 🌙 Login and Customer Information Collection State
@@ -658,14 +668,10 @@ const handleCustomerInfoCollected = async (info: { firstName: string; lastName: 
         // Continuing existing conversation
         conversationData.databaseChatId = databaseChatId;
         console.log('🌙 Luna: Saving to existing database chat:', databaseChatId);
-      } else if (storedSessionId) {
-        // Use stored session ID
-        conversationData.lunaSessionId = storedSessionId;
-        console.log('🌙 Luna: Saving with stored session ID:', storedSessionId);
       } else {
-        // New session
-        conversationData.lunaSessionId = props.chatId;
-        console.log('🌙 Luna: Saving with new session ID:', props.chatId);
+        // New conversation - let backend generate the chat ID
+        // Don't use Luna session IDs anymore
+        console.log('🌙 Luna: Creating new conversation - backend will generate chat ID');
       }
       
       await api.post('/api/guest-chat/save-conversation', conversationData);
@@ -730,12 +736,10 @@ const handleCustomerInfoCollected = async (info: { firstName: string; lastName: 
             // Continuing existing conversation
             updatedConversationData.databaseChatId = databaseChatId;
           } else if (storedSessionId) {
-            // Use stored session ID
+            // Use stored session ID (legacy)
             updatedConversationData.lunaSessionId = storedSessionId;
-          } else if (props.chatId) {
-            // New session
-            updatedConversationData.lunaSessionId = props.chatId;
           }
+          // For new conversations, let backend generate chat ID
           
           await api.post('/api/guest-chat/save-conversation', updatedConversationData);
           console.log('🌙 Luna: Updated conversation with welcome message saved');

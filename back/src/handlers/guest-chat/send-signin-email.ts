@@ -43,16 +43,16 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log(`Sending signin email to: ${userEmail}, chatId: ${chatId || 'none'}`);
 
-    // Check if user has any chats
-    const userChats = await chatService.getUserChats(userEmail, 10);
+    // Check if user has any paid chats
+    const userChats = await chatService.getUserChats(userEmail, 10, true);
     if (!userChats.chats || userChats.chats.length === 0) {
       return createResponse(404, { 
         error: 'Not Found', 
-        message: 'No conversations found for this email address' 
+        message: 'No paid conversations found for this email address' 
       });
     }
 
-    // If specific chatId provided, verify it belongs to the user
+    // If specific chatId provided, verify it belongs to the user and is paid
     let specificChat = null;
     if (chatId) {
       specificChat = await chatService.getChatById(userEmail, chatId);
@@ -62,35 +62,61 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           message: 'Chat not found or access denied' 
         });
       }
+      
+      // Check if the specific chat is paid
+      if (!specificChat.isPaid) {
+        return createResponse(403, { 
+          error: 'Forbidden', 
+          message: 'Only paid conversations can be accessed via email signin' 
+        });
+      }
     }
 
-    // Generate secure signin token
-    const token = uuidv4();
+    const baseUrl = process.env.CLOUDFRONT_DOMAIN || 'https://your-domain.com';
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
     const createdAt = new Date().toISOString();
 
-    // Store signin token in database
-    await chatService.storeSigninToken(token, {
+    // Generate tokens for all chats
+    const chatTokens = [];
+    for (const chat of userChats.chats) {
+      const token = uuidv4();
+      
+      // Store signin token in database
+      await chatService.storeSigninToken(token, {
+        email: userEmail,
+        chatId: chat.id,
+        expiresAt,
+        createdAt
+      });
+
+      chatTokens.push({
+        id: chat.id,
+        title: chat.title,
+        lastMessageAt: chat.lastMessageAt,
+        signinUrl: `${baseUrl}/welcome.html?token=${token}&chat=${chat.id}`
+      });
+    }
+
+    // Generate general signin token (for new session)
+    const generalToken = uuidv4();
+    await chatService.storeSigninToken(generalToken, {
       email: userEmail,
-      chatId,
+      chatId: undefined,
       expiresAt,
       createdAt
     });
 
-    // Generate signin URL - point to welcome.html with token
-    const baseUrl = process.env.CLOUDFRONT_DOMAIN || 'https://your-domain.com';
-    const signinUrl = chatId 
-      ? `${baseUrl}/welcome.html?token=${token}&chat=${chatId}`
-      : `${baseUrl}/welcome.html?token=${token}`;
+    const generalSigninUrl = `${baseUrl}/welcome.html?token=${generalToken}`;
 
     // Send email using SES
     const emailService = new EmailService();
     const emailSent = await emailService.sendSigninEmail({
       userEmail,
-      signinUrl,
+      signinUrl: generalSigninUrl, // Fallback general link
       chatCount: userChats.chats.length,
       specificChatTitle: specificChat?.title,
-      expiresAt
+      expiresAt,
+      chats: chatTokens // All chats with individual links
     });
 
     if (!emailSent) {

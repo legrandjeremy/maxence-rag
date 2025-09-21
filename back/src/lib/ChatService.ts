@@ -74,7 +74,7 @@ export class ChatService {
   /**
    * Create a new chat for Luna streaming session
    */
-  async createLunaChat(userEmail: string, lunaSessionId: string, request: ChatCreateRequest): Promise<Chat> {
+  async createLunaChat(userEmail: string, lunaSessionId: string | undefined, request: ChatCreateRequest): Promise<Chat> {
     const chatId = uuidv4(); // Generate proper UUID for database
     const now = new Date().toISOString();
     
@@ -96,7 +96,7 @@ export class ChatService {
       isPaid: false,
       paywallAt: new Date(new Date(now).getTime() + 5 * 60 * 1000).toISOString(),
       stage: 'initial_contact',
-      lunaSessionId // Store the Luna session ID for mapping
+      ...(lunaSessionId && { lunaSessionId }) // Store the Luna session ID for mapping if provided
     };
 
     await this.databaseService.create<ChatEntity>(chatEntity);
@@ -285,7 +285,7 @@ Dis-moi ton prénom…`;
   /**
    * Get user's chat list
    */
-  async getUserChats(userEmail: string, limit: number = 20): Promise<ChatListResponse> {
+  async getUserChats(userEmail: string, limit: number = 20, paidOnly: boolean = false): Promise<ChatListResponse> {
     const chatEntities = await this.databaseService.queryByGSI1<ChatEntity>(
       `USER#${userEmail}`,
       undefined,
@@ -293,7 +293,17 @@ Dis-moi ton prénom…`;
     );
 
     const chats = chatEntities
-      .filter(entity => entity.EntityType === 'CHAT' && entity.isActive)
+      .filter(entity => {
+        const isValidChat = entity.EntityType === 'CHAT' && entity.isActive;
+        if (!isValidChat) return false;
+        
+        // If paidOnly is true, only include paid chats
+        if (paidOnly) {
+          return entity.isPaid === true;
+        }
+        
+        return true;
+      })
       .map(entity => ({
         id: entity.id,
         userEmail: entity.userEmail,
@@ -302,7 +312,8 @@ Dis-moi ton prénom…`;
         updatedAt: entity.updatedAt,
         lastMessageAt: entity.lastMessageAt,
         isActive: entity.isActive,
-        stage: entity.stage
+        stage: entity.stage,
+        isPaid: entity.isPaid
       }))
       .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
 
@@ -519,6 +530,7 @@ Dis-moi ton prénom…`;
       GSI1PK: `EMAIL#${tokenData.email}`,
       GSI1SK: `TOKEN#${tokenData.createdAt}`,
       EntityType: 'SIGNIN_TOKEN',
+      id: token, // Use token as the ID
       token,
       email: tokenData.email,
       chatId: tokenData.chatId,
@@ -596,8 +608,37 @@ Dis-moi ton prénom…`;
       updatedAt: chatEntity.updatedAt,
       lastMessageAt: chatEntity.lastMessageAt,
       isActive: chatEntity.isActive,
+      isPaid: chatEntity.isPaid,
       stage: chatEntity.stage
     };
+  }
+
+  /**
+   * Mark a chat as paid
+   */
+  async markChatAsPaid(userEmail: string, chatId: string): Promise<void> {
+    console.log(`Marking chat as paid: ${chatId} for user: ${userEmail}`);
+    console.log(`Chat ID type check: ${chatId} (length: ${chatId.length})`);
+    
+    // First verify the chat exists
+    const chat = await this.getChatById(userEmail, chatId);
+    if (!chat) {
+      console.error(`Chat not found: ${chatId} for user: ${userEmail}`);
+      console.error(`This might be a Luna session ID instead of database UUID. Expected format: UUID, got: ${chatId}`);
+      throw new Error(`Chat not found: ${chatId} for user: ${userEmail}`);
+    }
+    
+    // Update the chat to mark it as paid
+    await this.databaseService.update<Partial<ChatEntity>>(
+      `CHAT#${userEmail}`,
+      `CHAT#${chatId}`,
+      { 
+        isPaid: true,
+        updatedAt: new Date().toISOString()
+      }
+    );
+    
+    console.log(`Successfully marked chat ${chatId} as paid for user: ${userEmail}`);
   }
 
   /**
