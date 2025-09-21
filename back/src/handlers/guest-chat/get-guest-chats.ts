@@ -3,15 +3,6 @@ import { createResponse, chatService } from '../../lib/common';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    // Get chat ID from path parameters
-    const chatId = event.pathParameters?.chatId;
-    if (!chatId) {
-      return createResponse(400, { 
-        error: 'Bad Request', 
-        message: 'Chat ID is required' 
-      });
-    }
-
     // Get email from query parameters
     const email = event.queryStringParameters?.email;
     if (!email || !email.trim()) {
@@ -35,7 +26,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // Parse query parameters
     const limit = event.queryStringParameters?.limit 
       ? parseInt(event.queryStringParameters.limit, 10) 
-      : 50;
+      : 20;
 
     if (isNaN(limit) || limit <= 0 || limit > 100) {
       return createResponse(400, { 
@@ -44,34 +35,18 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       });
     }
 
-    console.log(`Getting guest chat history for email: ${userEmail}, chatId: ${chatId}`);
+    console.log(`Getting guest chats for email: ${userEmail}`);
 
-    // Verify chat exists and belongs to user
-    const chat = await chatService.getChatById(userEmail, chatId);
-    if (!chat) {
-      return createResponse(404, { 
-        error: 'Not Found', 
-        message: 'Chat not found or access denied' 
-      });
-    }
-
-    // Get chat history
-    const result = await chatService.getChatHistory(chatId, limit);
+    // Get user's chats
+    const result = await chatService.getUserChats(userEmail, limit);
 
     return createResponse(200, { 
-      data: {
-        ...result,
-        chat: {
-          id: chat.id,
-          title: chat.title,
-          lunaSessionId: (chat as any).lunaSessionId // Include Luna session ID if available
-        }
-      },
-      message: 'Chat history retrieved successfully' 
+      data: result,
+      message: 'Chats retrieved successfully' 
     });
 
   } catch (error) {
-    console.error('Error getting guest chat history:', error);
+    console.error('Error getting guest chats:', error);
     
     if (error instanceof Error) {
       return createResponse(500, { 
@@ -85,4 +60,4 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       message: 'An unexpected error occurred' 
     });
   }
-}; 
+};

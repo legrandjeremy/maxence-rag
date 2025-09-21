@@ -14,7 +14,7 @@
     <div class="payment-form-content">
       <!-- Benefits section -->
       <div class="benefits-section">
-        <h4 class="benefits-title">✨ Abonnement Luna Total — 9€ / mois</h4>
+        <h4 class="benefits-title">✨ Abonnement Luna Total — 9€</h4>
         
         <div class="benefits-list">
           <div class="benefit-item">
@@ -513,13 +513,22 @@ onUnmounted(() => {
   align-items: center;
   gap: 0.75rem;
   margin-bottom: 0.75rem;
-  padding: 0.5rem;
-  background: rgba(124, 58, 237, 0.03);
-  border-radius: 8px;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.08), rgba(192, 132, 252, 0.06));
+  border-radius: 10px;
+  border-left: 3px solid #c084fc;
+  color: #374151;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.feature-item:hover {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.12), rgba(192, 132, 252, 0.1));
+  transform: translateX(2px);
 }
 
 .feature-icon {
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   flex-shrink: 0;
 }
 
@@ -719,38 +728,52 @@ onUnmounted(() => {
 /* Security section */
 .payment-security {
   margin-bottom: 1.5rem;
-  padding: 1.25rem;
-  background: rgba(16, 185, 129, 0.05);
+  padding: 1.5rem;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(5, 150, 105, 0.06));
   border-radius: 12px;
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  border: 2px solid rgba(16, 185, 129, 0.3);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
 }
 
 .security-title {
   text-align: center;
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: #10b981;
-  margin-bottom: 1rem;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #047857;
+  margin-bottom: 1.25rem;
+  text-shadow: 0 1px 2px rgba(16, 185, 129, 0.2);
 }
 
 .security-features {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
 .security-item {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem;
-  background: rgba(16, 185, 129, 0.05);
-  border-radius: 8px;
+  gap: 1rem;
+  padding: 0.875rem;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.08));
+  border-radius: 10px;
+  border-left: 3px solid #10b981;
+  color: #374151;
+  font-weight: 500;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+}
+
+.security-item:hover {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.12));
+  transform: translateX(2px);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
 }
 
 .security-icon {
-  font-size: 1.1rem;
+  font-size: 1.3rem;
   flex-shrink: 0;
+  color: #10b981;
 }
 
 /* Call to action section */

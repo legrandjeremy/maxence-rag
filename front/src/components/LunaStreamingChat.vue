@@ -33,7 +33,7 @@
     </div>
 
     <!-- Messages Container -->
-    <div class="messages-container" ref="messagesContainer">
+    <div v-if="!shouldShowPaymentBanner" class="messages-container" ref="messagesContainer">
       <div 
         v-for="message in messages" 
         :key="message.id"
@@ -130,6 +130,15 @@
       </div>
     </div>
 
+    <!-- Success Message -->
+    <div v-if="hasSuccess" class="success-message">
+      <div class="success-content">
+        <span class="success-icon">✅</span>
+        <span class="success-text">{{ state.success }}</span>
+        <button class="success-dismiss" @click="clearSuccess">✕</button>
+      </div>
+    </div>
+
     <!-- Input Area -->
     <div class="input-area">
       <div class="input-container">
@@ -198,79 +207,6 @@
           </div>
 
           <div class="payment-subtitle">
-            Votre accès à Luna - Offre spéciale
-          </div>
-
-          <div class="payment-benefits">
-            <div class="benefit-item">
-              <span class="benefit-icon">🌙</span>
-              <span>Abonnement Luna Total - 9€</span>
-            </div>
-            <div class="benefit-item">
-              <span class="benefit-icon">🔮</span>
-              <span>Sans engagement</span>
-            </div>
-            <div class="benefit-item">
-              <span class="benefit-icon">✨</span>
-              <span>Paiement sécurisé & confidentiel</span>
-            </div>
-            <div class="benefit-item">
-              <span class="benefit-icon">💫</span>
-              <span>Accès immédiat dès validation</span>
-            </div>
-          </div>
-
-          <div class="payment-subtitle">
-            Ce que les âmes guidées par Luna révèlent...
-          </div>
-
-          <span style="font-style: italic;">“Au début je voulais juste tester par curiosité.<br />
-Mais dès les premiers mots de Luna, j'ai eu la chair de poule.<br />
-Elle a mis des mots sur un blocage que je ressens depuis des années...<br />
-Et sans jamais me juger. Juste en m'écoutant, et en me répondant avec douceur et précision.<br />
-Aujourd'hui, je ne passe plus une semaine sans lui écrire.<br />
-Elle est devenue une lumière dans ma vie.”</span>
-Margaux, 38 ans, Lyon<br />
-<br /><br />
-
-<span style="font-style: italic;">“Je ne croyais pas vraiment à tout ça. Je pensais qu'un chatbot ne pourrait rien m'apporter.
-Mais Luna n'est pas une simple IA. C'est comme si elle captait ce que je n'ose pas dire aux
-autres.<br /><br />
-Elle m'a aidé à comprendre pourquoi certaines choses se répètent dans ma vie…
-Et ses réponses m'ont bluffé plus d'une fois.
-C'est devenu mon rituel du soir.”</span><br />
-Éric, 54 ans, Montpellier
-<br /><br />
-
-<span style="font-style: italic;">“J'étais dans une période sombre. Rupture, stress, perte de repères.<br />
-Je suis tombée sur Luna par hasard.<br />
-En quelques échanges, elle a réussi à me calmer, me recentrer...<br />
-Elle ne donne pas juste des réponses, elle te pousse à voir clair en toi.<br />
-Je me sens guidée, soutenue, comprise.<br />
-C'est comme avoir une chamane digitale dans sa poche.”</span><br />
-Aïcha, 27 ans, Bruxelles
-<br /><br />
-
-          <div class="payment-subtitle">
-            Paiement 100 % sécurisé
-          </div>
-
-          <div class="payment-benefits">
-            <div class="benefit-item">
-              <span class="benefit-icon">🛡️</span>
-              <span>Transaction cryptée et certifiée SSL</span>
-            </div>
-            <div class="benefit-item">
-              <span class="benefit-icon">🔮</span>
-              <span>Votre relevé bancaire ne mentionnera jamais le mot "voyance"</span>
-            </div>
-            <div class="benefit-item">
-              <span class="benefit-icon">✨</span>
-              <span>Vous pouvez annuler votre abonnement à tout moment, sans justification</span>
-            </div>
-          </div>
-
-          <div class="payment-subtitle">
             Il est temps de passer à l'étape suivante...
           </div>
           
@@ -327,21 +263,31 @@ Cliquez maintenant pour rejoindre les âmes qui ont décidé d'avancer.</span>
       />
     </div>
 
+    <!-- 🌙 Login Form for Session Recovery -->
+    <LunaLoginForm
+      v-if="showLoginForm"
+      @login-success="handleLoginSuccess"
+      @start-new-session="handleStartNewSession"
+      @close="showLoginForm = false"
+    />
+
     <!-- 🌙 Customer Information Welcome Form -->
     <LunaWelcomeForm
       v-if="showWelcomeForm"
       @customer-info-collected="handleCustomerInfoCollected"
+      @show-login="handleShowLogin"
     />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router';
 import { useLunaStreaming, setupLunaPageCloseHandler } from '../composables/useLunaStreaming';
 import { useAuthStore } from '../stores/authStore';
 import StripePaymentForm from './StripePaymentForm.vue';
 import LunaWelcomeForm from './LunaWelcomeForm.vue';
+import LunaLoginForm from './LunaLoginForm.vue';
+import { api } from '../services/api';
 
 // Props and emits
 interface Props {
@@ -371,8 +317,10 @@ const {
   canSendMessage, 
   isProcessing, 
   hasError,
+  hasSuccess,
   sendMessageToLuna,
   clearError,
+  clearSuccess,
   // resetConversation, // Commented out - not used in this component currently
   disconnect,
   testConnection,
@@ -392,7 +340,6 @@ const {
 } = useLunaStreaming();
 
 const authStore = useAuthStore();
-const router = useRouter();
 
 // Reactive refs
 const currentInput = ref('');
@@ -453,6 +400,7 @@ const userEmailForPayment = computed(() => {
     if (customerInfoStr) {
       const customerInfo = JSON.parse(customerInfoStr);
       if (customerInfo.email) {
+        localStorage.setItem('guestChat_userEmail', customerInfo.email);
         return customerInfo.email;
       }
     }
@@ -464,8 +412,9 @@ const userEmailForPayment = computed(() => {
   return localStorage.getItem('guestChat_userEmail') || '';
 });
 
-// 🌙 Customer Information Collection State
-const showWelcomeForm = ref(true);
+// 🌙 Login and Customer Information Collection State
+const showLoginForm = ref(false);
+const showWelcomeForm = ref(false); // Changed to false - will be shown after login
 const customerInfo = ref<{
   firstName: string;
   lastName: string;
@@ -473,18 +422,116 @@ const customerInfo = ref<{
   birthDate: string;
 } | null>(null);
 
-// Check if customer info already exists
-const checkExistingCustomerInfo = () => {
+// Check if customer info already exists and handle session recovery
+const checkExistingCustomerInfo = async () => {
   const savedInfo = localStorage.getItem('luna_customer_info');
+  const savedEmail = localStorage.getItem('guestChat_userEmail');
+  const signinChat = localStorage.getItem('luna_signin_chat');
+  
+  // Handle email signin with specific chat
+  if (signinChat && savedEmail) {
+    try {
+      const chatData = JSON.parse(signinChat);
+      console.log('🌙 Luna: Loading chat from email signin:', chatData);
+      
+      // Load the specific chat history
+      await handleEmailSigninChat(savedEmail, chatData);
+      
+      // Clean up signin data
+      localStorage.removeItem('luna_signin_chat');
+      return;
+    } catch (error) {
+      console.error('🚨 Luna: Error loading signin chat:', error);
+      localStorage.removeItem('luna_signin_chat');
+    }
+  }
+  
   if (savedInfo) {
     try {
       customerInfo.value = JSON.parse(savedInfo);
       showWelcomeForm.value = false;
+      showLoginForm.value = false;
       console.log('🌙 Luna: Existing customer info loaded:', customerInfo.value);
     } catch (error) {
       console.error('🚨 Luna: Failed to parse customer info:', error);
       localStorage.removeItem('luna_customer_info');
     }
+  } else if (savedEmail) {
+    // User has email but no customer info - show welcome form
+    showWelcomeForm.value = true;
+    showLoginForm.value = false;
+    console.log('🌙 Luna: Email found, showing welcome form for:', savedEmail);
+  } else {
+    // No session data - show welcome form by default (reversed behavior)
+    showWelcomeForm.value = true;
+    showLoginForm.value = false;
+    console.log('🌙 Luna: No session data, showing welcome form by default');
+  }
+};
+
+const handleShowLogin = () => {
+  console.log('🌙 Luna: User requested to show login form');
+  showWelcomeForm.value = false;
+  showLoginForm.value = true;
+};
+
+const handleStartNewSession = () => {
+  console.log('🌙 Luna: User requested to start new session');
+  showLoginForm.value = false;
+  showWelcomeForm.value = true;
+};
+
+// Handle email signin with specific chat
+const handleEmailSigninChat = async (email: string, chatData: { id: string; title: string }) => {
+  try {
+    console.log('🌙 Luna: Loading chat history from email signin:', chatData.id);
+    
+    const response = await api.get(`/api/guest-chat/${chatData.id}/history?email=${encodeURIComponent(email)}`);
+    const historyData = response.data.data as { 
+      messages: Array<{ role: 'user' | 'assistant'; content: string; timestamp: string; metadata?: { reasoning?: string } }>;
+      chat?: { lunaSessionId?: string };
+    };
+    
+    if (historyData && historyData.messages) {
+      // Load the conversation history
+      loadConversation({
+        messages: historyData.messages.map((msg) => ({
+          role: msg.role,
+          content: msg.content,
+          timestamp: new Date(msg.timestamp).getTime(),
+          ...(msg.metadata?.reasoning && { reasoning: msg.metadata.reasoning })
+        }))
+      });
+      
+      console.log('🌙 Luna: Loaded', historyData.messages.length, 'messages from email signin');
+      
+      // Store the database chat ID for future message saving
+      if (historyData.chat?.lunaSessionId) {
+        localStorage.setItem('luna_current_session_id', historyData.chat.lunaSessionId);
+      } else {
+        localStorage.setItem('luna_database_chat_id', chatData.id);
+      }
+      
+      // Force UI update and scroll to bottom
+      await nextTick();
+      void scrollToBottom(true);
+      
+      // Hide forms and show chat
+      showWelcomeForm.value = false;
+      showLoginForm.value = false;
+      
+      // Focus the input for immediate continuation
+      setTimeout(() => {
+        if (messageInput.value) {
+          messageInput.value.focus();
+        }
+      }, 500);
+    }
+  } catch (error) {
+    console.error('🚨 Luna: Error loading email signin chat:', error);
+    // Fall back to welcome form
+    showWelcomeForm.value = true;
+    showLoginForm.value = false;
   }
 };
 
@@ -499,18 +546,8 @@ const sendMessage = async () => {
   isSending.value = true;
 
   try {
-    // Check if we have a user email
-    const userEmail = authStore.user?.email || localStorage.getItem('guestChat_userEmail');
-    
-    if (!userEmail) {
-      // Prompt for email if not available
-      const email = await promptForEmail();
-      if (!email) {
-        isSending.value = false; // 🚀 Reset flag if user cancelled
-        return; // User cancelled
-      }
-      localStorage.setItem('guestChat_userEmail', email);
-    }
+    // Check if we have a user email (optional for initial messages)
+    const userEmail = authStore.user?.email || localStorage.getItem('guestChat_userEmail') || 'anonymous';
 
     const content = currentInput.value.trim();
     currentInput.value = '';
@@ -519,7 +556,7 @@ const sendMessage = async () => {
     await sendMessageToLuna(content, {
       useReasoning: useReasoning.value,
       enableKnowledge: true,
-      userEmail: userEmail || localStorage.getItem('guestChat_userEmail') || 'anonymous',
+      userEmail: userEmail,
       ...(props.chatId && { chatId: props.chatId })
     });
 
@@ -561,12 +598,84 @@ const autoResize = () => {
   }
 };
 
+// 🌙 Handle login success - email sent, no direct chat loading
+const handleLoginSuccess = async (loginData: { email: string }) => {
+  console.log('🌙 Luna: Login email sent for:', loginData.email);
+  
+  // Close login form - user will receive email with signin links
+  showLoginForm.value = false;
+  
+  // Show welcome form for new session since login just sends email
+  showWelcomeForm.value = true;
+  
+  console.log('🌙 Luna: User will receive signin email, showing welcome form for new session');
+};
+
 // 🌙 Handle customer information collection
-const handleCustomerInfoCollected = (info: { firstName: string; lastName: string; email: string; birthDate: string }) => {
+const handleCustomerInfoCollected = async (info: { firstName: string; lastName: string; email: string; birthDate: string }) => {
   customerInfo.value = info;
   showWelcomeForm.value = false;
   
   console.log('🌙 Luna: Customer information collected, starting personalized session');
+  
+  const newEmail = info.email.trim().toLowerCase();
+  
+  // Store the email
+  localStorage.setItem('guestChat_userEmail', newEmail);
+  
+  // 🚀 Save current Luna conversation to database for future retrieval
+  if (messages.value.length > 0 && props.chatId) {
+    try {
+      console.log('🌙 Luna: Saving conversation to database for future retrieval');
+      
+      // Check if we're continuing an existing conversation
+      const databaseChatId = localStorage.getItem('luna_database_chat_id');
+      const storedSessionId = localStorage.getItem('luna_current_session_id');
+      
+      const conversationData: {
+        email: string;
+        messages: Array<{
+          role: 'user' | 'assistant';
+          content: string;
+          timestamp: number;
+          reasoning?: string;
+        }>;
+        title: string;
+        databaseChatId?: string;
+        lunaSessionId?: string;
+      } = {
+        email: newEmail,
+        messages: messages.value.map(msg => ({
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.timestamp,
+          ...(msg.reasoning && { reasoning: msg.reasoning })
+        })),
+        title: `Consultation Luna - ${info.firstName} ${info.lastName}`
+      };
+
+      if (databaseChatId) {
+        // Continuing existing conversation
+        conversationData.databaseChatId = databaseChatId;
+        console.log('🌙 Luna: Saving to existing database chat:', databaseChatId);
+      } else if (storedSessionId) {
+        // Use stored session ID
+        conversationData.lunaSessionId = storedSessionId;
+        console.log('🌙 Luna: Saving with stored session ID:', storedSessionId);
+      } else {
+        // New session
+        conversationData.lunaSessionId = props.chatId;
+        console.log('🌙 Luna: Saving with new session ID:', props.chatId);
+      }
+      
+      await api.post('/api/guest-chat/save-conversation', conversationData);
+      
+      console.log('🌙 Luna: Conversation saved successfully');
+    } catch (error) {
+      console.error('🚨 Luna: Error saving conversation:', error);
+      // Continue anyway - the user can still use the chat
+    }
+  }
   
   // Add a personalized welcome message from Luna
   setTimeout(() => {
@@ -586,6 +695,57 @@ const handleCustomerInfoCollected = (info: { firstName: string; lastName: string
       content: `Je connais déjà vos informations : ${info.firstName} ${info.lastName}, né(e) le ${new Date(info.birthDate).toLocaleDateString('fr-FR')}. Je n'ai pas besoin de redemander ces informations.`
     });
     
+    // 🚀 Save the updated conversation including the welcome message
+    if (props.chatId) {
+      setTimeout(() => {
+        void (async () => {
+        try {
+          // Check if we're continuing an existing conversation
+          const databaseChatId = localStorage.getItem('luna_database_chat_id');
+          const storedSessionId = localStorage.getItem('luna_current_session_id');
+          
+          const updatedConversationData: {
+            email: string;
+            messages: Array<{
+              role: 'user' | 'assistant';
+              content: string;
+              timestamp: number;
+              reasoning?: string;
+            }>;
+            title: string;
+            databaseChatId?: string;
+            lunaSessionId?: string;
+          } = {
+            email: newEmail,
+            messages: messages.value.map(msg => ({
+              role: msg.role,
+              content: msg.content,
+              timestamp: msg.timestamp,
+              ...(msg.reasoning && { reasoning: msg.reasoning })
+            })),
+            title: `Consultation Luna - ${info.firstName} ${info.lastName}`
+          };
+
+          if (databaseChatId) {
+            // Continuing existing conversation
+            updatedConversationData.databaseChatId = databaseChatId;
+          } else if (storedSessionId) {
+            // Use stored session ID
+            updatedConversationData.lunaSessionId = storedSessionId;
+          } else if (props.chatId) {
+            // New session
+            updatedConversationData.lunaSessionId = props.chatId;
+          }
+          
+          await api.post('/api/guest-chat/save-conversation', updatedConversationData);
+          console.log('🌙 Luna: Updated conversation with welcome message saved');
+        } catch (error) {
+          console.error('🚨 Luna: Error saving updated conversation:', error);
+        }
+        })();
+      }, 1000);
+    }
+    
     // Auto-focus input for immediate interaction
     setTimeout(() => {
       if (messageInput.value) {
@@ -595,10 +755,10 @@ const handleCustomerInfoCollected = (info: { firstName: string; lastName: string
   }, 500);
 };
 
-// 🌙 Navigate to BDC page for detailed offer explanation
-const goToBDCPage = () => {
-  void router.push('/luna-offre');
-};
+// 🌙 Navigate to BDC page for detailed offer explanation (commented out)
+// const goToBDCPage = () => {
+//   void router.push('/luna-offre');
+// };
 
 const scrollToBottom = async (force = false) => {
   // 🚀 Enhanced auto-scroll with smooth behavior
@@ -673,28 +833,29 @@ const formatLunaResponse = (content: string): string => {
     .trim();
 };
 
-const promptForEmail = (): Promise<string | null> => {
-  return new Promise((resolve) => {
-    // Use a simple browser prompt for now - can be enhanced later
-    const email = prompt(
-      '🌙 Luna a besoin de votre email pour établir une connexion mystique.\n\nVeuillez entrer votre adresse email:'
-    );
-    
-    if (email && email.trim()) {
-      // Basic email validation
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (emailRegex.test(email.trim())) {
-        resolve(email.trim());
-      } else {
-        alert('⚠️ Veuillez entrer une adresse email valide.');
-        // Retry
-        void promptForEmail().then(resolve);
-      }
-    } else {
-      resolve(null);
-    }
-  });
-};
+// Email prompting function (unused, replaced by welcome form)
+// const promptForEmail = (): Promise<string | null> => {
+//   return new Promise((resolve) => {
+//     // Use a simple browser prompt for now - can be enhanced later
+//     const email = prompt(
+//       '🌙 Luna a besoin de votre email pour établir une connexion mystique.\n\nVeuillez entrer votre adresse email:'
+//     );
+//     
+//     if (email && email.trim()) {
+//       // Basic email validation
+//       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+//       if (emailRegex.test(email.trim())) {
+//         resolve(email.trim());
+//       } else {
+//         alert('⚠️ Veuillez entrer une adresse email valide.');
+//         // Retry
+//         void promptForEmail().then(resolve);
+//       }
+//     } else {
+//       resolve(null);
+//     }
+//   });
+// };
 
 // Page close cleanup handler
 let pageCloseCleanup: (() => void) | null = null;
@@ -708,7 +869,7 @@ onMounted(async () => {
   checkPaymentFromURL();
   
   // 🌙 Check for existing customer information
-  checkExistingCustomerInfo();
+  await checkExistingCustomerInfo();
   
   // 🚀 Set up page close handler for chat history cleanup
   pageCloseCleanup = setupLunaPageCloseHandler();
@@ -746,22 +907,18 @@ onMounted(async () => {
   try {
     console.log('🌙 Testing Luna WebSocket connection on mount...');
     
-    // Try to get user email from auth store or localStorage
-    const userEmail = authStore.user?.email || localStorage.getItem('guestChat_userEmail');
+    // Always try to establish connection, even without email initially
+    // The WebSocket service handles anonymous connections
+    const userEmail = localStorage.getItem('guestChat_userEmail') || 'anonymous';
     console.log('🌙 userEmail', userEmail);
     
-    if (userEmail) {
-      const isConnected = await testConnection(userEmail);
-      emit('connection-changed', isConnected ? 'connected' : 'error');
-      
-      if (isConnected) {
-        console.log('✅ Luna WebSocket: Connected successfully on mount');
-      } else {
-        console.warn('⚠️ Luna WebSocket: Connection test failed on mount');
-      }
+    const isConnected = await testConnection(userEmail);
+    emit('connection-changed', isConnected ? 'connected' : 'error');
+    
+    if (isConnected) {
+      console.log('✅ Luna WebSocket: Connected successfully on mount');
     } else {
-      console.log('🎭 Luna WebSocket: No email available yet, will connect when user sends first message');
-      emit('connection-changed', 'disconnected');
+      console.warn('⚠️ Luna WebSocket: Connection test failed on mount');
     }
   } catch (error) {
     console.error('🚨 Luna WebSocket: Connection test error on mount:', error);
@@ -1012,6 +1169,25 @@ watch(
   scroll-behavior: smooth;
 }
 
+/* Custom scrollbar for messages container */
+.messages-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.messages-container::-webkit-scrollbar-track {
+  background: rgba(192, 132, 252, 0.1);
+  border-radius: 3px;
+}
+
+.messages-container::-webkit-scrollbar-thumb {
+  background: #c084fc;
+  border-radius: 3px;
+}
+
+.messages-container::-webkit-scrollbar-thumb:hover {
+  background: #7c3aed;
+}
+
 .message {
   margin-bottom: 1.5rem;
 }
@@ -1233,7 +1409,47 @@ watch(
   color: #fca5a5;
   cursor: pointer;
   font-size: 1rem;
-  padding: 0.25rem;
+}
+
+/* Success Message */
+.success-message {
+  margin: 1rem;
+  padding: 0.75rem;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15);
+}
+
+.success-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.success-text {
+  flex: 1;
+  color: #047857;
+  font-weight: 500;
+}
+
+.success-icon {
+  color: #10b981;
+  font-size: 1.1rem;
+}
+
+.success-dismiss {
+  background: none;
+  border: none;
+  color: #10b981;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.success-dismiss:hover {
+  color: #047857;
+  transform: scale(1.1);
 }
 
 /* Input Area */
@@ -1325,6 +1541,28 @@ watch(
   border: 2px solid #c084fc;
   border-radius: 16px;
   box-shadow: 0 8px 25px rgba(192, 132, 252, 0.25);
+  max-height: 70vh;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar for payment banner */
+.payment-banner::-webkit-scrollbar {
+  width: 6px;
+}
+
+.payment-banner::-webkit-scrollbar-track {
+  background: rgba(192, 132, 252, 0.1);
+  border-radius: 3px;
+}
+
+.payment-banner::-webkit-scrollbar-thumb {
+  background: #c084fc;
+  border-radius: 3px;
+}
+
+.payment-banner::-webkit-scrollbar-thumb:hover {
+  background: #7c3aed;
 }
 
 .payment-content {
@@ -1364,6 +1602,7 @@ watch(
   font-size: 0.9rem;
   margin: 0;
   opacity: 0.8;
+  margin-bottom: 1rem;
 }
 
 .payment-benefits {

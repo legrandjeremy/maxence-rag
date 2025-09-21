@@ -28,6 +28,7 @@ export interface ChatEntity extends BaseEntity {
   interactionCount?: number; // Track number of user interactions
   visionTriggered?: boolean; // Track if vision revelation was triggered
   conversionTriggered?: boolean; // Track if conversion was triggered
+  lunaSessionId?: string; // For Luna streaming sessions (luna_xxx format)
 }
 
 export interface ChatMessageEntity extends BaseEntity {
@@ -45,7 +46,20 @@ export interface ChatMessageEntity extends BaseEntity {
     sourceDocuments?: string[];
     confidence?: number;
     processingTime?: number;
+    reasoning?: string; // Added for Luna streaming conversations
   };
+}
+
+export interface SigninTokenEntity extends BaseEntity {
+  PK: string; // SIGNIN_TOKEN#token
+  SK: string; // TOKEN#token
+  GSI1PK: string; // EMAIL#userEmail
+  GSI1SK: string; // TOKEN#timestamp
+  EntityType: 'SIGNIN_TOKEN';
+  token: string;
+  email: string;
+  chatId?: string;
+  expiresAt: string;
 }
 
 export class ChatService {
@@ -55,6 +69,117 @@ export class ChatService {
   constructor(databaseService: DatabaseService, bedrockService: BedrockService) {
     this.databaseService = databaseService;
     this.bedrockService = bedrockService;
+  }
+
+  /**
+   * Create a new chat for Luna streaming session
+   */
+  async createLunaChat(userEmail: string, lunaSessionId: string, request: ChatCreateRequest): Promise<Chat> {
+    const chatId = uuidv4(); // Generate proper UUID for database
+    const now = new Date().toISOString();
+    
+    const title = request.title || `Consultation Luna ${new Date().toLocaleDateString()}`;
+
+    const chatEntity: ChatEntity = {
+      PK: `CHAT#${userEmail}`,
+      SK: `CHAT#${chatId}`,
+      GSI1PK: `USER#${userEmail}`,
+      GSI1SK: `CHAT#${now}`,
+      EntityType: 'CHAT',
+      id: chatId,
+      userEmail,
+      title,
+      createdAt: now,
+      updatedAt: now,
+      lastMessageAt: now,
+      isActive: true,
+      isPaid: false,
+      paywallAt: new Date(new Date(now).getTime() + 5 * 60 * 1000).toISOString(),
+      stage: 'initial_contact',
+      lunaSessionId // Store the Luna session ID for mapping
+    };
+
+    await this.databaseService.create<ChatEntity>(chatEntity);
+
+    return {
+      id: chatId,
+      userEmail,
+      title,
+      createdAt: now,
+      updatedAt: now,
+      lastMessageAt: now,
+      isActive: true,
+      stage: 'initial_contact'
+    };
+  }
+
+  /**
+   * Get Luna chat by session ID
+   */
+  async getLunaChatBySessionId(userEmail: string, lunaSessionId: string): Promise<Chat | null> {
+    // Query for chats by user email and look for matching lunaSessionId
+    const chatEntities = await this.databaseService.queryByPK<ChatEntity>(`CHAT#${userEmail}`, 'CHAT#');
+    
+    const matchingChat = chatEntities.find(chat => 
+      chat.EntityType === 'CHAT' && 
+      chat.lunaSessionId === lunaSessionId &&
+      chat.isActive
+    );
+
+    if (!matchingChat) {
+      return null;
+    }
+
+    return {
+      id: matchingChat.id,
+      userEmail: matchingChat.userEmail,
+      title: matchingChat.title,
+      createdAt: matchingChat.createdAt,
+      updatedAt: matchingChat.updatedAt,
+      lastMessageAt: matchingChat.lastMessageAt,
+      isActive: matchingChat.isActive,
+      stage: matchingChat.stage
+    };
+  }
+
+  /**
+   * Create a new chat conversation with a specific ID
+   */
+  async createChatWithId(userEmail: string, chatId: string, request: ChatCreateRequest): Promise<Chat> {
+    const now = new Date().toISOString();
+    
+    const title = request.title || `Consultation avec Luna ${new Date().toLocaleDateString()}`;
+
+    const chatEntity: ChatEntity = {
+      PK: `CHAT#${userEmail}`,
+      SK: `CHAT#${chatId}`,
+      GSI1PK: `USER#${userEmail}`,
+      GSI1SK: `CHAT#${now}`,
+      EntityType: 'CHAT',
+      id: chatId,
+      userEmail,
+      title,
+      createdAt: now,
+      updatedAt: now,
+      lastMessageAt: now,
+      isActive: true,
+      isPaid: false,
+      paywallAt: new Date(new Date(now).getTime() + 5 * 60 * 1000).toISOString(),
+      stage: 'initial_contact'
+    };
+
+    await this.databaseService.create<ChatEntity>(chatEntity);
+
+    return {
+      id: chatId,
+      userEmail,
+      title,
+      createdAt: now,
+      updatedAt: now,
+      lastMessageAt: now,
+      isActive: true,
+      stage: 'initial_contact'
+    };
   }
 
   /**
@@ -185,6 +310,269 @@ Dis-moi ton prénom…`;
       chats,
       total: chats.length
     };
+  }
+
+  /**
+   * Update chat email (for guest users who provide real email later)
+   */
+  async updateChatEmail(oldEmail: string, chatId: string, newEmail: string): Promise<Chat> {
+    // First, get the existing chat
+    const existingChat = await this.getChatById(oldEmail, chatId);
+    if (!existingChat) {
+      throw new Error('Chat not found');
+    }
+
+    // Get the chat entity from database
+    const oldChatEntity = await this.databaseService.get<ChatEntity>(`CHAT#${oldEmail}`, `CHAT#${chatId}`);
+    if (!oldChatEntity) {
+      throw new Error('Chat entity not found');
+    }
+
+    const now = new Date().toISOString();
+
+    // Create new chat entity with updated email
+    const newChatEntity: ChatEntity = {
+      ...oldChatEntity,
+      PK: `CHAT#${newEmail}`,
+      GSI1PK: `USER#${newEmail}`,
+      userEmail: newEmail,
+      updatedAt: now
+    };
+
+    // Get all messages for this chat
+    const messages = await this.databaseService.queryByPK<ChatMessageEntity>(`CHAT#${chatId}`, 'MESSAGE#');
+
+    // Prepare items to write and delete using batchWrite
+    const itemsToWrite: (ChatEntity | ChatMessageEntity)[] = [newChatEntity];
+    const itemsToDelete: Array<{PK: string, SK: string}> = [
+      { PK: `CHAT#${oldEmail}`, SK: `CHAT#${chatId}` }
+    ];
+
+    // Update all message entities with new email
+    for (const message of messages) {
+      if (message.EntityType === 'CHAT_MESSAGE') {
+        // Create new message entity with updated email
+        const newMessageEntity: ChatMessageEntity = {
+          ...message,
+          GSI1PK: `USER#${newEmail}`,
+          userEmail: newEmail,
+          updatedAt: now
+        };
+
+        itemsToWrite.push(newMessageEntity);
+        itemsToDelete.push({ PK: message.PK, SK: message.SK });
+      }
+    }
+
+    // Execute batch write (this handles both puts and deletes)
+    await this.databaseService.batchWrite(itemsToWrite, itemsToDelete);
+
+    console.log(`Successfully updated chat ${chatId} email from ${oldEmail} to ${newEmail}`);
+
+    return {
+      id: chatId,
+      userEmail: newEmail,
+      title: newChatEntity.title,
+      createdAt: newChatEntity.createdAt,
+      updatedAt: now,
+      lastMessageAt: newChatEntity.lastMessageAt,
+      isActive: newChatEntity.isActive,
+      stage: newChatEntity.stage
+    };
+  }
+
+  /**
+   * Update chat ID (for Luna streaming chats that need to match frontend chatId)
+   */
+  async updateChatId(userEmail: string, oldChatId: string, newChatId: string): Promise<void> {
+    // Get the existing chat
+    const oldChatEntity = await this.databaseService.get<ChatEntity>(`CHAT#${userEmail}`, `CHAT#${oldChatId}`);
+    if (!oldChatEntity) {
+      throw new Error('Chat not found');
+    }
+
+    const now = new Date().toISOString();
+
+    // Create new chat entity with updated ID
+    const newChatEntity: ChatEntity = {
+      ...oldChatEntity,
+      SK: `CHAT#${newChatId}`,
+      id: newChatId,
+      updatedAt: now
+    };
+
+    // Get all messages for this chat
+    const messages = await this.databaseService.queryByPK<ChatMessageEntity>(`CHAT#${oldChatId}`, 'MESSAGE#');
+
+    // Prepare items to write and delete
+    const itemsToWrite: (ChatEntity | ChatMessageEntity)[] = [newChatEntity];
+    const itemsToDelete: Array<{PK: string, SK: string}> = [
+      { PK: `CHAT#${userEmail}`, SK: `CHAT#${oldChatId}` }
+    ];
+
+    // Update all message entities with new chat ID
+    for (const message of messages) {
+      if (message.EntityType === 'CHAT_MESSAGE') {
+        const newMessageEntity: ChatMessageEntity = {
+          ...message,
+          PK: `CHAT#${newChatId}`,
+          chatId: newChatId,
+          updatedAt: now
+        };
+
+        itemsToWrite.push(newMessageEntity);
+        itemsToDelete.push({ PK: message.PK, SK: message.SK });
+      }
+    }
+
+    // Execute batch write
+    await this.databaseService.batchWrite(itemsToWrite, itemsToDelete);
+
+    console.log(`Successfully updated chat ID from ${oldChatId} to ${newChatId}`);
+  }
+
+  /**
+   * Clear all messages for a specific chat
+   */
+  async clearChatMessages(chatId: string): Promise<void> {
+    try {
+      // Get all messages for this chat
+      const messages = await this.databaseService.queryByPK<ChatMessageEntity>(`CHAT#${chatId}`, 'MESSAGE#');
+      
+      if (messages.length === 0) {
+        console.log(`No messages to clear for chat ${chatId}`);
+        return;
+      }
+
+      // Prepare items to delete
+      const itemsToDelete: Array<{PK: string, SK: string}> = messages
+        .filter(msg => msg.EntityType === 'CHAT_MESSAGE')
+        .map(msg => ({ PK: msg.PK, SK: msg.SK }));
+
+      if (itemsToDelete.length > 0) {
+        // Use batchWrite with empty itemsToWrite array and itemsToDelete
+        await this.databaseService.batchWrite([], itemsToDelete);
+        console.log(`Cleared ${itemsToDelete.length} messages for chat ${chatId}`);
+      }
+    } catch (error) {
+      console.error(`Error clearing messages for chat ${chatId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Save a message to an existing chat
+   */
+  async saveMessage(userEmail: string, chatId: string, messageData: {
+    content: string;
+    role: 'user' | 'assistant';
+    timestamp: string;
+    metadata?: { reasoning?: string };
+  }): Promise<void> {
+    const messageId = uuidv4();
+
+    const messageEntity: ChatMessageEntity = {
+      PK: `CHAT#${chatId}`,
+      SK: `MESSAGE#${messageData.timestamp}#${messageId}`,
+      GSI1PK: `USER#${userEmail}`,
+      GSI1SK: `MESSAGE#${messageData.timestamp}`,
+      EntityType: 'CHAT_MESSAGE',
+      id: messageId,
+      chatId,
+      userEmail,
+      content: messageData.content,
+      role: messageData.role,
+      timestamp: messageData.timestamp,
+      createdAt: messageData.timestamp,
+      updatedAt: messageData.timestamp,
+      metadata: messageData.metadata
+    };
+
+    await this.databaseService.create<ChatMessageEntity>(messageEntity);
+
+    // Update chat's lastMessageAt
+    const chatEntity = await this.databaseService.get<ChatEntity>(`CHAT#${userEmail}`, `CHAT#${chatId}`);
+    if (chatEntity) {
+      await this.databaseService.update<ChatEntity>(
+        `CHAT#${userEmail}`,
+        `CHAT#${chatId}`,
+        {
+          lastMessageAt: messageData.timestamp,
+          updatedAt: new Date().toISOString()
+        }
+      );
+    }
+  }
+
+  /**
+   * Store signin token for email-based authentication
+   */
+  async storeSigninToken(token: string, tokenData: {
+    email: string;
+    chatId?: string;
+    expiresAt: string;
+    createdAt: string;
+  }): Promise<void> {
+    const signinTokenEntity: SigninTokenEntity = {
+      PK: `SIGNIN_TOKEN#${token}`,
+      SK: `TOKEN#${token}`,
+      GSI1PK: `EMAIL#${tokenData.email}`,
+      GSI1SK: `TOKEN#${tokenData.createdAt}`,
+      EntityType: 'SIGNIN_TOKEN',
+      token,
+      email: tokenData.email,
+      chatId: tokenData.chatId,
+      expiresAt: tokenData.expiresAt,
+      createdAt: tokenData.createdAt,
+      updatedAt: tokenData.createdAt
+    };
+
+    await this.databaseService.create<SigninTokenEntity>(signinTokenEntity);
+    console.log(`Stored signin token for email: ${tokenData.email}`);
+  }
+
+  /**
+   * Validate and consume signin token
+   */
+  async validateSigninToken(token: string): Promise<{
+    email: string;
+    chatId?: string;
+  } | null> {
+    try {
+      const tokenEntity = await this.databaseService.get<SigninTokenEntity>(
+        `SIGNIN_TOKEN#${token}`,
+        `TOKEN#${token}`
+      );
+
+      if (!tokenEntity || tokenEntity.EntityType !== 'SIGNIN_TOKEN') {
+        console.log(`Invalid signin token: ${token}`);
+        return null;
+      }
+
+      // Check if token is expired
+      const now = new Date();
+      const expiresAt = new Date(tokenEntity.expiresAt);
+      
+      if (now > expiresAt) {
+        console.log(`Expired signin token: ${token}`);
+        // Clean up expired token
+        await this.databaseService.delete(`SIGNIN_TOKEN#${token}`, `TOKEN#${token}`);
+        return null;
+      }
+
+      // Token is valid - delete it (one-time use)
+      await this.databaseService.delete(`SIGNIN_TOKEN#${token}`, `TOKEN#${token}`);
+      
+      console.log(`Valid signin token consumed for email: ${tokenEntity.email}`);
+      
+      return {
+        email: tokenEntity.email,
+        chatId: tokenEntity.chatId
+      };
+    } catch (error) {
+      console.error('Error validating signin token:', error);
+      return null;
+    }
   }
 
   /**

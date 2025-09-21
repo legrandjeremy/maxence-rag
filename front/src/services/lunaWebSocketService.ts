@@ -104,23 +104,24 @@ export class LunaWebSocketService {
             authStoreEmail: authStore.user?.email
           });
 
-          // For guest users, create a minimal token with email
+          // For guest users, create a minimal token (email optional for initial connection)
           let sessionToken = token;
-          if (!token && userEmail) {
-            console.log('🎭 Luna WebSocket: Creating guest session for:', userEmail);
-            // Create a simple guest token structure
+          if (!token) {
+            console.log('🎭 Luna WebSocket: Creating anonymous session - email will be provided later');
+            // Create a simple guest token structure (email can be empty initially)
             sessionToken = btoa(JSON.stringify({
               sub: `guest_${Date.now()}`,
-              email: userEmail,
+              email: userEmail || 'anonymous', // Allow anonymous initially
               isGuest: true,
               iat: Date.now(),
               exp: Date.now() + (2 * 60 * 60 * 1000) // 2 hours
             }));
           }
 
+          // Always allow connection - email will be validated when saving to database
           if (!sessionToken) {
-            console.error('🚨 Luna WebSocket: No authentication token or email available');
-            callbacks.onError('Email required to connect with Luna');
+            console.error('🚨 Luna WebSocket: Failed to create session token');
+            callbacks.onError('Failed to establish connection');
             return;
           }
 

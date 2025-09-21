@@ -144,25 +144,28 @@ export class LunaStreamingService {
 
       case ConversationStage.FEELING_INQUIRY:
         return `
-ÉTAPE ACTUELLE: Exploration émotionnelle
-- Si prénom + émotion donnés → explorer l'émotion directement
+ÉTAPE ACTUELLE: Exploration émotionnelle - UNE QUESTION À LA FOIS
+- Si prénom + émotion donnés → explorer l'émotion directement avec UNE question
 - Exemple: "Jeremy, je sens ces angoisses qui te tourmentent. D'où viennent-elles ?"
 - JAMAIS répéter l'input utilisateur
-- Progression vers les causes profondes`;
+- RÈGLE: Poser UNE question → attendre réponse → puis question suivante
+- Progression vers les causes profondes ÉTAPE PAR ÉTAPE`;
 
       case ConversationStage.DEEPER_PROBING:
         return `
-ÉTAPE ACTUELLE: Approfondissement mystique
-- Révèle des patterns cachés
-- Connecte aux énergies subtiles
-- Questions sur les répétitions karmiques`;
+ÉTAPE ACTUELLE: Approfondissement mystique - SÉQUENTIEL
+- Révèle des patterns cachés avec UNE question à la fois
+- Connecte aux énergies subtiles progressivement
+- Questions sur les répétitions karmiques UNE PAR UNE
+- ATTENDRE chaque réponse avant de continuer`;
 
       case ConversationStage.ASTROLOGICAL_CONNECTION:
         return `
-ÉTAPE ACTUELLE: Connexion astrologique
-- Propose exploration des signes célestes
-- Révèle les influences planétaires
-- Guidance vers la réappropriation du destin`;
+ÉTAPE ACTUELLE: Connexion astrologique - PROGRESSIVE
+- Demande le signe astrologique (UNE question)
+- ATTENDRE la réponse avant de révéler les influences
+- Révèle les influences planétaires progressivement
+- Guidance vers la réappropriation du destin ÉTAPE PAR ÉTAPE`;
 
       default:
         return `

@@ -54,7 +54,7 @@ export const useGuestChatStore = defineStore('guestChat', () => {
   const conversationStartedAt = ref<number | null>(null);
   const isBlockedForPayment = ref(false);
   const isPaid = ref(false);
-  const freeSecondsTotal = 1 * 60;
+  const freeSecondsTotal = 5 * 60;
   const remainingSeconds = ref<number>(freeSecondsTotal);
   let timerId: number | null = null;
 
@@ -269,7 +269,21 @@ export const useGuestChatStore = defineStore('guestChat', () => {
   };
 
   const initializeGuestChat = async (email?: string): Promise<boolean> => {
-    const finalEmail = (email && email.trim()) ? email.trim().toLowerCase() : generateAnonymousEmail();
+    // Require real email - no anonymous chats
+    if (!email || !email.trim()) {
+      console.error('🚨 Guest Chat: Email is required - no anonymous chats allowed');
+      return false;
+    }
+    
+    const finalEmail = email.trim().toLowerCase();
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(finalEmail)) {
+      console.error('🚨 Guest Chat: Invalid email format');
+      return false;
+    }
+    
     setUserEmail(finalEmail);
     return await createChat({
       email: finalEmail,
@@ -277,18 +291,7 @@ export const useGuestChatStore = defineStore('guestChat', () => {
     });
   };
 
-  const generateAnonymousEmail = (): string => {
-    // Create a stable pseudo-identifier scoped to this browser using localStorage
-    const key = 'luna-anon-id';
-    let anonId = window.localStorage.getItem(key);
-    if (!anonId) {
-      const random = Math.random().toString(36).slice(2);
-      const ts = Date.now().toString(36);
-      anonId = `anon_${ts}_${random}`;
-      window.localStorage.setItem(key, anonId);
-    }
-    return `${anonId}@guest.luna`;
-  };
+  // Removed generateAnonymousEmail() - no anonymous chats allowed
 
   const checkPaymentStatus = async (chatId: string, email: string): Promise<boolean> => {
     try {
@@ -488,7 +491,6 @@ export const useGuestChatStore = defineStore('guestChat', () => {
     sendMessage,
     initializeGuestChat,
     startConversationTimer,
-    generateAnonymousEmail,
     checkPaymentStatus,
     pollPaymentStatus,
     handlePaymentSuccess,

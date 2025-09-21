@@ -127,15 +127,6 @@
                 @click="clearLocalHistory"
                 class="setting-item"
               />
-              
-              <q-btn
-                outline
-                color="primary"
-                icon="download"
-                label="Exporter les conversations"
-                @click="exportConversations"
-                class="setting-item"
-              />
             </div>
           </q-card-section>
 
@@ -347,43 +338,44 @@ const clearLocalHistory = () => {
   });
 };
 
-const exportConversations = () => {
-  try {
-    const conversations = localStorage.getItem('luna_conversations');
-    if (!conversations) {
-      $q.notify({
-        type: 'warning',
-        message: 'Aucune conversation à exporter',
-        position: 'top'
-      });
-      return;
-    }
+// Export conversations function (unused, for future feature)
+// const exportConversations = () => {
+//   try {
+//     const conversations = localStorage.getItem('luna_conversations');
+//     if (!conversations) {
+//       $q.notify({
+//         type: 'warning',
+//         message: 'Aucune conversation à exporter',
+//         position: 'top'
+//       });
+//       return;
+//     }
 
-    const dataStr = JSON.stringify(JSON.parse(conversations), null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+//     const dataStr = JSON.stringify(JSON.parse(conversations), null, 2);
+//     const dataBlob = new Blob([dataStr], { type: 'application/json' });
     
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(dataBlob);
-    link.download = `luna_conversations_${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
+//     const link = document.createElement('a');
+//     link.href = URL.createObjectURL(dataBlob);
+//     link.download = `luna_conversations_${new Date().toISOString().split('T')[0]}.json`;
+//     link.click();
     
-    URL.revokeObjectURL(link.href);
+//     URL.revokeObjectURL(link.href);
     
-    $q.notify({
-      type: 'positive',
-      message: '💾 Conversations exportées',
-      position: 'top',
-      timeout: 2000
-    });
-  } catch (error) {
-    console.error('Export error:', error);
-    $q.notify({
-      type: 'negative',
-      message: 'Erreur lors de l\'export',
-      position: 'top'
-    });
-  }
-};
+//     $q.notify({
+//       type: 'positive',
+//       message: '💾 Conversations exportées',
+//       position: 'top',
+//       timeout: 2000
+//     });
+//   } catch (error) {
+//     console.error('Export error:', error);
+//     $q.notify({
+//       type: 'negative',
+//       message: 'Erreur lors de l\'export',
+//       position: 'top'
+//     });
+//   }
+// };
 
 interface SavedConversation {
   id: string;

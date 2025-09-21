@@ -15,12 +15,28 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       });
     }
 
-    // Optional email support: if not provided, create a random guest identifier
-    const email = (requestBody.email || '').trim().toLowerCase() || generateGuestEmail();
+    // Require real email - no anonymous chats allowed
+    const email = (requestBody.email || '').trim().toLowerCase();
+    
+    if (!email) {
+      return createResponse(400, { 
+        error: 'Bad Request', 
+        message: 'Email is required - no anonymous chats allowed' 
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return createResponse(400, { 
+        error: 'Bad Request', 
+        message: 'Valid email format is required' 
+      });
+    }
 
     console.log(`Creating guest chat for email: ${email}`);
 
-    // Create new chat using email directly
+    // Create new chat using real email only
     const chat = await chatService.createChat(email, {
       title: requestBody.title || 'Consultation avec Luna'
     });
@@ -47,8 +63,4 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   }
 }; 
 
-function generateGuestEmail(): string {
-  const random = Math.random().toString(36).slice(2);
-  const ts = Date.now().toString(36);
-  return `guest_${ts}_${random}@guest.luna`;
-}
+// Removed generateGuestEmail() - no anonymous chats allowed

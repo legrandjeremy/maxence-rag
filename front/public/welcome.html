@@ -653,42 +653,30 @@
             }
         });
 
-        // Add warning when trying to leave page with active conversation
+        // Persistent session handling - preserve user data across page refreshes
         window.addEventListener('beforeunload', function(event) {
-            // Check if there's Luna streaming conversation data
-            const lunaConversations = localStorage.getItem('luna_conversations');
-            
-            // Also check legacy chat data for backward compatibility
-            const legacyChat = localStorage.getItem('guestChat_currentChat');
-            const legacyEmail = localStorage.getItem('guestChat_userEmail');
-            
-            if (lunaConversations || (legacyChat && legacyEmail)) {
-                // Modern browsers show a generic message, not custom text
-                // This will trigger the browser's built-in "Leave page?" dialog
-                event.preventDefault();
-                event.returnValue = ''; // Modern browsers ignore custom messages
-            }
-        });
-
-        // Clear data only when page actually unloads (user confirmed leaving)
-        window.addEventListener('unload', function() {
-            // Clear Luna streaming conversation data
-            const lunaConversations = localStorage.getItem('luna_conversations');
-            if (lunaConversations) {
-                localStorage.removeItem('luna_conversations');
-                localStorage.removeItem('luna_settings');
-                console.log('🌙 Luna streaming data cleared from localStorage on page unload');
+            // Backup session data for recovery instead of clearing
+            try {
+                const sessionBackup = {
+                    timestamp: Date.now(),
+                    lunaConversations: localStorage.getItem('luna_conversations'),
+                    lunaSettings: localStorage.getItem('luna_settings'),
+                    guestChatData: localStorage.getItem('guestChat_currentChat'),
+                    userEmail: localStorage.getItem('guestChat_userEmail'),
+                    customerInfo: localStorage.getItem('luna_customer_info'),
+                    paymentState: localStorage.getItem('luna_payment_state')
+                };
+                
+                // Only backup if there's actual data
+                if (sessionBackup.lunaConversations || sessionBackup.guestChatData || sessionBackup.userEmail) {
+                    localStorage.setItem('luna_session_recovery', JSON.stringify(sessionBackup));
+                    console.log('🌙 Luna: Session backed up for recovery on refresh');
+                }
+            } catch (error) {
+                console.error('🚨 Luna: Error backing up session:', error);
             }
             
-            // Clear legacy chat data for backward compatibility
-            const legacyChat = localStorage.getItem('guestChat_currentChat');
-            const legacyEmail = localStorage.getItem('guestChat_userEmail');
-            
-            if (legacyChat && legacyEmail) {
-                localStorage.removeItem('guestChat_currentChat');
-                localStorage.removeItem('guestChat_userEmail');
-                console.log('🔄 Legacy chat data cleared from localStorage on page unload');
-            }
+            // No longer prevent navigation or clear data
         });
     </script>
 </body>

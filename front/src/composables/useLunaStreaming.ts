@@ -27,6 +27,7 @@ export interface LunaStreamingState {
   currentMessage: string;
   currentReasoning: string;
   error: string | null;
+  success: string | null;
   connectionStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
 }
 
@@ -39,6 +40,7 @@ export function useLunaStreaming() {
     currentMessage: '',
     currentReasoning: '',
     error: null,
+    success: null,
     connectionStatus: 'disconnected'
   });
 
@@ -49,14 +51,14 @@ export function useLunaStreaming() {
   const conversationStartedAt = ref<number | null>(null);
   const isBlockedForPayment = ref(false);
   const isPaid = ref(false);
-  const freeSecondsTotal = 7 * 60; // 5 minutes free trial
+  const freeSecondsTotal = 5 * 60; // 5 minutes free trial
   const remainingSeconds = ref<number>(freeSecondsTotal);
   let timerId: number | null = null;
 
   // 🚀 Payment form state (embedded Stripe form)
   const showPaymentForm = ref(false);
 
-  // 🚀 Load payment state from localStorage on init
+  // 🚀 Load payment state from localStorage (no session recovery)
   const loadPaymentState = () => {
     try {
       const savedPaymentState = localStorage.getItem('luna_payment_state');
@@ -123,6 +125,10 @@ export function useLunaStreaming() {
 
   const hasError = computed(() => 
     state.error !== null
+  );
+
+  const hasSuccess = computed(() => 
+    state.success !== null
   );
 
   // 🚀 Timer computed properties
@@ -251,6 +257,11 @@ export function useLunaStreaming() {
     state.error = null;
   };
 
+  // Clear success state
+  const clearSuccess = () => {
+    state.success = null;
+  };
+
   // 🚀 Timer and Payment Functions (inspired by GuestChatWidget)
   const startConversationTimer = () => {
     if (!conversationStartedAt.value && !isPaid.value) {
@@ -326,10 +337,10 @@ export function useLunaStreaming() {
     state.error = null;
     
     // Show success message briefly
-    state.error = '✨ Paiement réussi ! Votre consultation avec Luna peut continuer librement.';
+    state.success = '✨ Paiement réussi ! Votre consultation avec Luna peut continuer librement.';
     setTimeout(() => {
-      if (state.error?.includes('Paiement réussi')) {
-        state.error = null;
+      if (state.success?.includes('Paiement réussi')) {
+        state.success = null;
       }
     }, 3000);
     
@@ -500,6 +511,19 @@ export function useLunaStreaming() {
           state.connectionStatus = 'connected';
           state.currentMessage = '';
           state.currentReasoning = '';
+
+          // 🚀 Auto-save conversation to database after each message
+          // Only save if user has provided real email (not anonymous)
+          const userEmail = localStorage.getItem('guestChat_userEmail');
+          const hasRealEmail = userEmail && !userEmail.includes('@guest.luna') && userEmail !== 'anonymous';
+          
+          if (options.chatId && hasRealEmail) {
+            setTimeout(() => {
+              void saveConversationToDatabase(options.chatId);
+            }, 1000); // Small delay to ensure UI is updated
+          } else {
+            console.log('🌙 Luna: Skipping auto-save - no real email provided yet');
+          }
         },
 
         onError: (error: string) => {
@@ -624,6 +648,69 @@ export function useLunaStreaming() {
     console.log(`🔄 Loaded ${data.messages.length} messages from storage`);
   };
 
+  // 🚀 Save conversation to database for persistence
+  const saveConversationToDatabase = async (chatId?: string) => {
+    const userEmail = localStorage.getItem('guestChat_userEmail');
+    
+    // Only save if user has provided real email (not anonymous)
+    const hasRealEmail = userEmail && !userEmail.includes('@guest.luna') && userEmail !== 'anonymous';
+    
+    if (!hasRealEmail || !chatId || messages.value.length === 0) {
+      console.log('🌙 Luna: Skipping database save - no real email provided yet');
+      return; // Skip if no real email, chatId, or messages
+    }
+
+    try {
+      // Check if we're continuing an existing conversation
+      const databaseChatId = localStorage.getItem('luna_database_chat_id');
+      const storedSessionId = localStorage.getItem('luna_current_session_id');
+      
+      const conversationData: {
+        email: string;
+        messages: Array<{
+          role: 'user' | 'assistant';
+          content: string;
+          timestamp: number;
+          reasoning?: string;
+        }>;
+        title: string;
+        databaseChatId?: string;
+        lunaSessionId?: string;
+      } = {
+        email: userEmail,
+        messages: messages.value.map(msg => ({
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.timestamp,
+          ...(msg.reasoning && { reasoning: msg.reasoning })
+        })),
+        title: `Consultation Luna ${new Date().toLocaleDateString('fr-FR')}`
+      };
+
+      if (databaseChatId) {
+        // Continuing existing conversation
+        conversationData.databaseChatId = databaseChatId;
+        console.log('🌙 Luna: Saving to existing database chat:', databaseChatId);
+      } else if (storedSessionId) {
+        // Use stored session ID
+        conversationData.lunaSessionId = storedSessionId;
+        console.log('🌙 Luna: Saving with stored session ID:', storedSessionId);
+      } else {
+        // New session
+        conversationData.lunaSessionId = chatId;
+        console.log('🌙 Luna: Saving with new session ID:', chatId);
+      }
+
+      // Import api dynamically to avoid circular dependencies
+      const { api } = await import('../services/api');
+      await api.post('/api/guest-chat/save-conversation', conversationData);
+      
+      console.log('🌙 Luna: Conversation auto-saved to database');
+    } catch (error) {
+      console.error('🚨 Luna: Error auto-saving conversation:', error);
+    }
+  };
+
   return {
     // State
     state,
@@ -634,6 +721,7 @@ export function useLunaStreaming() {
     canSendMessage,
     isProcessing,
     hasError,
+    hasSuccess,
     formattedRemaining,
     shouldShowTimer,
     shouldShowPaymentBanner,
@@ -649,6 +737,7 @@ export function useLunaStreaming() {
     sendMessageToLuna,
     addUserMessage,
     clearError,
+    clearSuccess,
     resetConversation,
     disconnect,
     checkConnection,
@@ -660,6 +749,7 @@ export function useLunaStreaming() {
     handlePaymentSuccess,
     handlePaymentError,
     loadConversation,
+    saveConversationToDatabase,
     loadPaymentState,
     savePaymentState,
     checkPaymentFromURL
@@ -669,36 +759,39 @@ export function useLunaStreaming() {
 // 🚀 Initialize payment state when composable is imported
 // This ensures state is loaded as soon as the composable is used
 
-// 🚀 Add page close handling for chat history cleanup
+// 🚀 Session cleanup handler - clears session data when tab/window is closed
 export const setupLunaPageCloseHandler = () => {
-  const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-    // Ask user for confirmation
-    const message = 'Êtes-vous sûr de vouloir quitter ? Votre conversation avec Luna sera supprimée.';
-    event.returnValue = message;
-    return message;
-  };
-
-  const handleUnload = () => {
-    // Clear Luna chat data
+  const handleBeforeUnload = (_event: BeforeUnloadEvent) => {
+    console.log('🌙 Luna: Before unload event - clearing session data', _event);
+    // Clear all session data when tab/window is closed
+    // Users can now retrieve their chats via email
     try {
+      // Clear Luna-specific session data
       localStorage.removeItem('guestChat_userEmail');
       localStorage.removeItem('luna_customer_info');
-      localStorage.removeItem('luna_conversation_history');
+      localStorage.removeItem('luna_payment_state');
+      localStorage.removeItem('luna_session_backup');
+      localStorage.removeItem('luna_current_session_id');
+      localStorage.removeItem('luna_database_chat_id');
+      localStorage.removeItem('luna_conversations');
+      localStorage.removeItem('luna_settings');
+      localStorage.removeItem('guestChat_currentChat');
       localStorage.removeItem('luna_timer_state');
-      // Keep payment state for future sessions
-      console.log('🌙 Luna: Chat history and customer info cleared on page close');
+      
+      console.log('🌙 Luna: Session data cleared - users can retrieve chats via email');
     } catch (error) {
-      console.error('🚨 Luna: Error clearing chat history:', error);
+      console.error('🚨 Luna: Error clearing session data:', error);
     }
+    
+    // No longer clear data or show confirmation dialog
+    // Let users refresh/navigate freely while preserving their session
   };
 
-  // Add event listeners
+  // Add event listener for backup only
   window.addEventListener('beforeunload', handleBeforeUnload);
-  window.addEventListener('unload', handleUnload);
 
   // Return cleanup function
   return () => {
     window.removeEventListener('beforeunload', handleBeforeUnload);
-    window.removeEventListener('unload', handleUnload);
   };
 };

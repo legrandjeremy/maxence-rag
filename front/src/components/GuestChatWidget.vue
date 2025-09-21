@@ -1,5 +1,42 @@
 <template>
   <div class="chat-widget-iframe">
+    <!-- Email Collection Form -->
+    <q-dialog v-model="showEmailForm" persistent>
+      <q-card class="email-form-card">
+        <q-card-section class="text-center">
+          <q-avatar size="60px" class="luna-avatar q-mb-md">
+            <q-icon name="auto_awesome" class="luna-icon" />
+          </q-avatar>
+          <div class="text-h6 luna-title q-mb-sm">Consultation avec Luna</div>
+          <div class="text-body2 q-mb-md">
+            Pour commencer votre consultation personnalisée, veuillez entrer votre adresse email :
+          </div>
+        </q-card-section>
+        
+        <q-card-section>
+          <q-input
+            v-model="emailInput"
+            type="email"
+            label="Votre adresse email"
+            outlined
+            :rules="[val => !!val && val.includes('@') || 'Email requis']"
+            @keyup.enter="handleEmailSubmit"
+            class="q-mb-md"
+          />
+        </q-card-section>
+        
+        <q-card-actions align="center">
+          <q-btn
+            @click="handleEmailSubmit"
+            color="purple-4"
+            label="Commencer la consultation"
+            :disable="!emailInput.trim()"
+            class="full-width"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
     <!-- Main Chat Window -->
     <q-card class="chat-window-iframe full-height">
       <!-- Header -->
@@ -179,6 +216,8 @@ const guestChatStore = useGuestChatStore();
 const messageInput = ref('');
 const scrollArea = ref();
 const hasSignaledChatStarted = ref(false);
+const showEmailForm = ref(false);
+const emailInput = ref('');
 
 // Mystical action suggestions for Luna
 const mysticalActions: MysticalAction[] = [
@@ -207,26 +246,65 @@ const inputPlaceholder = computed(() => {
 
 // Methods
   const initializeChat = async () => {
-    // Get email from URL params or props (optional now)
+    // Get email from URL params or props
     const urlParams = new URLSearchParams(window.location.search);
     const emailFromUrl = urlParams.get('email');
     const email = emailFromUrl || props.userEmail || localStorage.getItem('guestEmail') || '';
 
-    if (email) {
-      localStorage.setItem('guestEmail', email);
+    if (email && email.trim()) {
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (emailRegex.test(email.trim())) {
+        localStorage.setItem('guestEmail', email);
+        
+        // Initialize guest chat with real email
+        const success = await guestChatStore.initializeGuestChat(email);
+        if (!success) {
+          console.error('Failed to initialize guest chat with email:', email);
+          // Show email collection form if initialization fails
+          showEmailForm.value = true;
+          return;
+        }
+        
+        // If resuming with existing history, notify parent that chat has started
+        if (!hasSignaledChatStarted.value && (guestChatStore.currentMessages.length > 0 || guestChatStore.currentChat)) {
+          window.parent?.postMessage({ type: 'chat-started' }, '*');
+          hasSignaledChatStarted.value = true;
+        }
+      } else {
+        console.error('Invalid email format:', email);
+        showEmailForm.value = true;
+      }
+    } else {
+      // No email available - show email collection form
+      console.log('No email provided - showing email collection form');
+      showEmailForm.value = true;
     }
-
-    // Initialize or resume guest chat (anonymous if needed)
-    const success = await guestChatStore.initializeGuestChat(email || undefined);
-    if (!success) {
-      console.error('Failed to initialize guest chat');
-    }
-  // If resuming with existing history, notify parent that chat has started
-  if (!hasSignaledChatStarted.value && (guestChatStore.currentMessages.length > 0 || guestChatStore.currentChat)) {
-    window.parent?.postMessage({ type: 'chat-started' }, '*');
-    hasSignaledChatStarted.value = true;
-  }
   };
+
+const handleEmailSubmit = async () => {
+  const email = emailInput.value.trim();
+  if (!email) return;
+  
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    console.error('Invalid email format:', email);
+    return;
+  }
+  
+  localStorage.setItem('guestEmail', email);
+  showEmailForm.value = false;
+  
+  // Initialize guest chat with the provided email
+  const success = await guestChatStore.initializeGuestChat(email);
+  if (success) {
+    console.log('Guest chat initialized successfully with email:', email);
+  } else {
+    console.error('Failed to initialize guest chat');
+    showEmailForm.value = true; // Show form again if failed
+  }
+};
 
 const sendMessage = async () => {
   if (!messageInput.value.trim() || !guestChatStore.currentChat || !guestChatStore.userEmail) return;

@@ -43,6 +43,9 @@ Parameters:
     Type: String
     Description: Bedrock Knowledge Base ID
     Default: X9CIYS980F
+  CloudfrontPublicUrl:
+    Type: String
+    Description: Cloudfront Public URL
 
 Globals:
   Function:
@@ -285,6 +288,12 @@ Resources:
                   - bedrock:InvokeModel
                 Resource:
                   - arn:aws:bedrock:us-east-1:*:knowledge-base/*
+              - Effect: Allow
+                Action:
+                  - ses:SendEmail
+                  - ses:SendRawEmail
+                Resource:
+                  - arn:aws:ses:*:*:identity/*
 
   Api:
     Type: AWS::Serverless::HttpApi
@@ -324,7 +333,7 @@ Resources:
       Role: !GetAtt PlayerManagementIamRole.Arn
       Environment:
         Variables:
-          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
           FRONTEND_URL: !Sub "https://${PlayerManagementCloudFrontDistribution.DomainName}"
       Events:
         CreateCheckoutSession:
@@ -404,7 +413,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
-          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
           AUTH0_DOMAIN: !Sub "${Auth0IssuerUrl}"
           AUTH0_CLIENT_ID: !Ref Auth0ClientId
           AUTH0_AUDIENCE: !Ref Auth0Audience
@@ -440,7 +449,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
-          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
           BEDROCK_KNOWLEDGE_BASE_ID: !Ref BedrockKnowledgeBaseId
       Events:
         CreateGuestChat:
@@ -470,7 +479,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
-          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
           BEDROCK_KNOWLEDGE_BASE_ID: !Ref BedrockKnowledgeBaseId
       Events:
         SendGuestMessage:
@@ -500,7 +509,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
-          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
       Events:
         GetGuestChatHistory:
           Type: HttpApi
@@ -529,7 +538,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
-          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
       Events:
         GetGuestChatStatus:
           Type: HttpApi
@@ -548,6 +557,180 @@ Resources:
         EntryPoints:
           - handlers/guest-chat/get-guest-chat-status.ts
 
+  GetGuestChatsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-luna-front-get-guest-chats
+      CodeUri: src/
+      Handler: handlers/guest-chat/get-guest-chats.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
+      Events:
+        GetGuestChats:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/guest-chat/chats
+            Method: GET
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/guest-chat/get-guest-chats.ts
+
+  UpdateGuestEmailFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-luna-front-update-guest-email
+      CodeUri: src/
+      Handler: handlers/guest-chat/update-guest-email.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
+      Events:
+        UpdateGuestEmail:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/guest-chat/{chatId}/update-email
+            Method: PUT
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/guest-chat/update-guest-email.ts
+
+  SaveLunaConversationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-luna-front-save-luna-conversation
+      CodeUri: src/
+      Handler: handlers/guest-chat/save-luna-conversation.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
+      Events:
+        SaveLunaConversation:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/guest-chat/save-conversation
+            Method: POST
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/guest-chat/save-luna-conversation.ts
+
+  GenerateSigninLinkFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-luna-front-generate-signin-link
+      CodeUri: src/
+      Handler: handlers/guest-chat/generate-signin-link.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
+      Events:
+        GenerateSigninLink:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/guest-chat/generate-signin-link
+            Method: POST
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/guest-chat/generate-signin-link.ts
+
+  ValidateSigninTokenFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-luna-front-validate-signin-token
+      CodeUri: src/
+      Handler: handlers/guest-chat/validate-signin-token.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
+      Events:
+        ValidateSigninToken:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/guest-chat/validate-token/{token}
+            Method: GET
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/guest-chat/validate-signin-token.ts
+
+  SendSigninEmailFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-luna-front-send-signin-email
+      CodeUri: src/
+      Handler: handlers/guest-chat/send-signin-email.handler
+      Role: !GetAtt PlayerManagementIamRole.Arn
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
+      Events:
+        SendSigninEmail:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /api/guest-chat/send-signin-email
+            Method: POST
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: true
+        EntryPoints:
+          - handlers/guest-chat/send-signin-email.ts
+
   # User Management Functions
   CreateUserFunction:
     Type: AWS::Serverless::Function
@@ -559,7 +742,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
-          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
           AUTH0_DOMAIN: !Sub "${Auth0IssuerUrl}"
           AUTH0_AUDIENCE: !Ref Auth0Audience
           AUTH0_MANAGEMENT_CLIENT_ID: !Ref Auth0ManagementClientId
@@ -597,7 +780,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
-          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
       Events:
         GetUsers:
           Type: HttpApi
@@ -629,7 +812,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
-          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
       Events:
         GetUser:
           Type: HttpApi
@@ -661,7 +844,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
-          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
           AUTH0_DOMAIN: !Sub "${Auth0IssuerUrl}"
           AUTH0_AUDIENCE: !Ref Auth0Audience
           AUTH0_MANAGEMENT_CLIENT_ID: !Ref Auth0ManagementClientId
@@ -699,7 +882,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
-          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
       Events:
         DeleteUser:
           Type: HttpApi
@@ -731,7 +914,7 @@ Resources:
       Timeout: 30
       Environment:
         Variables:
-          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
           BEDROCK_KNOWLEDGE_BASE_ID: X9CIYS980F
       Events:
         CreateChat:
@@ -764,7 +947,7 @@ Resources:
       Role: !GetAtt PlayerManagementIamRole.Arn
       Environment:
         Variables:
-          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
           BEDROCK_KNOWLEDGE_BASE_ID: X9CIYS980F
       Events:
         GetChats:
@@ -799,7 +982,7 @@ Resources:
       MemorySize: 1024
       Environment:
         Variables:
-          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
           BEDROCK_KNOWLEDGE_BASE_ID: X9CIYS980F
       Events:
         SendMessage:
@@ -832,7 +1015,7 @@ Resources:
       Role: !GetAtt PlayerManagementIamRole.Arn
       Environment:
         Variables:
-          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
           BEDROCK_KNOWLEDGE_BASE_ID: X9CIYS980F
       Events:
         GetChatHistory:
@@ -865,7 +1048,7 @@ Resources:
       Role: !GetAtt PlayerManagementIamRole.Arn
       Environment:
         Variables:
-          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
           BEDROCK_KNOWLEDGE_BASE_ID: X9CIYS980F
       Events:
         UpdateChat:
@@ -898,7 +1081,7 @@ Resources:
       Role: !GetAtt PlayerManagementIamRole.Arn
       Environment:
         Variables:
-          CLOUDFRONT_DOMAIN: !GetAtt PlayerManagementCloudFrontDistribution.DomainName
+          CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
           BEDROCK_KNOWLEDGE_BASE_ID: X9CIYS980F
       Events:
         DeleteChat:

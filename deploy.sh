@@ -251,7 +251,8 @@ deploy_backend() {
             Auth0ManagementClientSecret="$SAM_AUTH0_MANAGEMENT_CLIENT_SECRET" \
             Auth0AdminRoleId="$SAM_AUTH0_ADMIN_ROLE_ID" \
             Auth0TeamManagerRoleId="$SAM_AUTH0_TEAM_MANAGER_ROLE_ID" \
-            Auth0UserRoleId="$SAM_AUTH0_USER_ROLE_ID"
+            Auth0UserRoleId="$SAM_AUTH0_USER_ROLE_ID" \
+            CloudfrontPublicUrl="$CLOUDFRONT_DOMAIN"
     
     # Get API Gateway URL from CloudFormation outputs
     log_info "Retrieving API Gateway URL..."
@@ -324,6 +325,8 @@ EOF
         log_warning "Failed to retrieve API URL: $API_URL"
         API_URL=""
     fi
+
+    export CLOUDFRONT_DOMAIN="$CLOUDFRONT_DOMAIN"
 
     echo "CLOUDFRONT_DOMAIN: '$CLOUDFRONT_DOMAIN'"
     echo "API_URL: '$API_URL'"
@@ -487,17 +490,17 @@ main() {
     else
         log_info "Skipping infrastructure deployment"
     fi
+
+    if [[ "$SKIP_FRONTEND" != true ]]; then
+        deploy_frontend
+    else
+        log_info "Skipping frontend deployment"
+    fi
     
     if [[ "$SKIP_BACKEND" != true ]]; then
         deploy_backend
     else
         log_info "Skipping backend deployment"
-    fi
-    
-    if [[ "$SKIP_FRONTEND" != true ]]; then
-        deploy_frontend
-    else
-        log_info "Skipping frontend deployment"
     fi
     
     echo ""

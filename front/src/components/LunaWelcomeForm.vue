@@ -116,6 +116,20 @@
           </button>
         </form>
 
+        <div class="login-option">
+          <div class="divider">
+            <span class="divider-text">ou</span>
+          </div>
+          <button 
+            type="button" 
+            @click="showLoginForm"
+            class="login-btn"
+          >
+            <span class="btn-icon">🌙</span>
+            Retrouvez votre session avec Luna
+          </button>
+        </div>
+
         <div class="mystical-footer">
           <div class="privacy-note">
             <span class="privacy-icon">🔒</span>
@@ -139,6 +153,7 @@ interface CustomerInfo {
 
 const emit = defineEmits<{
   'customer-info-collected': [info: CustomerInfo];
+  'show-login': [];
 }>();
 
 const formData = reactive<CustomerInfo>({
@@ -153,6 +168,10 @@ const isSubmitting = ref(false);
 
 const clearError = () => {
   error.value = '';
+};
+
+const showLoginForm = () => {
+  emit('show-login');
 };
 
 const validateForm = (): boolean => {
@@ -493,5 +512,72 @@ const handleSubmit = async () => {
     width: 60px;
     height: 60px;
   }
+  
+  .login-option {
+    margin-top: 1rem;
+  }
+  
+  .login-btn {
+    width: 100%;
+    padding: 0.75rem;
+    font-size: 0.875rem;
+  }
+}
+
+/* Login option styles */
+.login-option {
+  margin: 2rem 0 1.5rem 0;
+  text-align: center;
+}
+
+.divider {
+  position: relative;
+  margin: 1.5rem 0;
+}
+
+.divider::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.3), transparent);
+}
+
+.divider-text {
+  background: linear-gradient(135deg, #1a1a2e, #16213e);
+  padding: 0 1rem;
+  color: rgba(139, 92, 246, 0.7);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.login-btn {
+  width: 100%;
+  padding: 1rem 2rem;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(168, 85, 247, 0.1));
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 12px;
+  color: rgba(139, 92, 246, 0.9);
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.login-btn:hover {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(168, 85, 247, 0.15));
+  border-color: rgba(139, 92, 246, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(139, 92, 246, 0.2);
+}
+
+.login-btn .btn-icon {
+  font-size: 1.1rem;
 }
 </style>
