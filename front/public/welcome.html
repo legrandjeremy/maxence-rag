@@ -655,6 +655,8 @@
 
         // 🌙 Token-based signin handling for email links
         async function handleTokenSignin() {
+
+            console.log('🌙 Luna: handleTokenSignin');
             const urlParams = new URLSearchParams(window.location.search);
             const token = urlParams.get('token');
             const chatId = urlParams.get('chat');
@@ -690,11 +692,48 @@
                         // Store user email and chat info
                         localStorage.setItem('guestChat_userEmail', data.data.email);
                         
-                        if (data.data.specificChat) {
+                        if (data.data.chats[0]) {
                             // Store specific chat info for loading
-                            localStorage.setItem('luna_signin_chat', JSON.stringify(data.data.specificChat));
-                            console.log('🌙 Luna: Stored specific chat:', data.data.specificChat);
+                            localStorage.setItem('luna_signin_chat', JSON.stringify(data.data.chats[0]));
+                            localStorage.setItem('luna_database_chat_id', data.data.chats[0].id);
+                            console.log('🌙 Luna: Stored specific chat:', data.data.chats[0]);
+                            
+                            // Load ALL historical messages for this chat
+                            try {
+                                console.log('🌙 Luna: Loading complete chat history...');
+                                const historyResponse = await fetch(`${API_BASE_URL}/api/guest-chat/${data.data.chats[0].id}/history?email=${encodeURIComponent(data.data.email)}`);
+                                const historyData = await historyResponse.json();
+                                
+                                if (historyData.data && historyData.data.messages && historyData.data.messages.length > 0) {
+                                    // Store complete conversation history
+                                    const conversationData = {
+                                        messages: historyData.data.messages.map((msg) => ({
+                                            role: msg.role,
+                                            content: msg.content,
+                                            timestamp: new Date(msg.timestamp).getTime(),
+                                            ...(msg.metadata?.reasoning && { reasoning: msg.metadata.reasoning })
+                                        }))
+                                    };
+                                    
+                                    localStorage.setItem('luna_conversation_history', JSON.stringify(conversationData));
+                                    console.log('🌙 Luna: Loaded and stored', historyData.data.messages.length, 'historical messages');
+                                } else {
+                                    console.log('🌙 Luna: No historical messages found for this chat');
+                                }
+                            } catch (error) {
+                                console.error('🚨 Luna: Error loading chat history:', error);
+                            }
                         }
+                        
+                        // Store customer info for Vue.js app to recognize as existing user
+                        const customerInfo = {
+                            email: data.data.email,
+                            firstName: 'Utilisateur', // Default name since we don't have it from token
+                            lastName: 'Luna',
+                            birthDate: new Date().toISOString().split('T')[0] // Default birth date
+                        };
+                        localStorage.setItem('luna_customer_info', JSON.stringify(customerInfo));
+                        console.log('🌙 Luna: Stored customer info for Vue.js app:', customerInfo);
                         
                         // Clear URL parameters to avoid reprocessing
                         const cleanUrl = window.location.pathname;
@@ -703,8 +742,8 @@
                         // Remove loading state
                         document.body.removeChild(loadingDiv);
                         
-                        // Redirect to Luna streaming page
-                        console.log('🌙 Luna: Redirecting to /luna-streaming');
+                        // Redirect to Luna streaming page with chat data
+                        console.log('🌙 Luna: Redirecting to /luna-streaming with chat data');
                         window.location.href = '/luna-streaming';
                         
                     } else {
@@ -751,6 +790,8 @@
                 }
             }
         }
+
+        console.log('🌙 Luna: handleTokenSignin 11');
         
         // Check for token on page load
         document.addEventListener('DOMContentLoaded', handleTokenSignin);

@@ -75,10 +75,12 @@ export class ChatService {
    * Create a new chat for Luna streaming session
    */
   async createLunaChat(userEmail: string, lunaSessionId: string | undefined, request: ChatCreateRequest): Promise<Chat> {
+    console.log(`Creating Luna chat for user: ${userEmail}, lunaSessionId: ${lunaSessionId}, title: ${request.title}`);
     const chatId = uuidv4(); // Generate proper UUID for database
     const now = new Date().toISOString();
     
     const title = request.title || `Consultation Luna ${new Date().toLocaleDateString()}`;
+    console.log(`Generated chatId: ${chatId}, title: ${title}`);
 
     const chatEntity: ChatEntity = {
       PK: `CHAT#${userEmail}`,
@@ -573,7 +575,7 @@ Dis-moi ton prénom…`;
       }
 
       // Token is valid - delete it (one-time use)
-      await this.databaseService.delete(`SIGNIN_TOKEN#${token}`, `TOKEN#${token}`);
+      // await this.databaseService.delete(`SIGNIN_TOKEN#${token}`, `TOKEN#${token}`);
       
       console.log(`Valid signin token consumed for email: ${tokenEntity.email}`);
       

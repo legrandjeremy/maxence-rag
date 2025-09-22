@@ -51,7 +51,7 @@ export function useLunaStreaming() {
   const conversationStartedAt = ref<number | null>(null);
   const isBlockedForPayment = ref(false);
   const isPaid = ref(false);
-  const freeSecondsTotal = 5 * 60; // 5 minutes free trial
+  const freeSecondsTotal = 1 * 60; // 5 minutes free trial
   const remainingSeconds = ref<number>(freeSecondsTotal);
   let timerId: number | null = null;
 
@@ -517,9 +517,9 @@ export function useLunaStreaming() {
           const userEmail = localStorage.getItem('guestChat_userEmail');
           const hasRealEmail = userEmail && !userEmail.includes('@guest.luna') && userEmail !== 'anonymous';
           
-          if (options.chatId && hasRealEmail) {
+          if (hasRealEmail) {
             setTimeout(() => {
-              void saveConversationToDatabase(options.chatId);
+              void saveConversationToDatabase();
             }, 1000); // Small delay to ensure UI is updated
           } else {
             console.log('🌙 Luna: Skipping auto-save - no real email provided yet');
@@ -649,15 +649,15 @@ export function useLunaStreaming() {
   };
 
   // 🚀 Save conversation to database for persistence
-  const saveConversationToDatabase = async (chatId?: string) => {
+  const saveConversationToDatabase = async () => {
     const userEmail = localStorage.getItem('guestChat_userEmail');
     
     // Only save if user has provided real email (not anonymous)
     const hasRealEmail = userEmail && !userEmail.includes('@guest.luna') && userEmail !== 'anonymous';
     
-    if (!hasRealEmail || !chatId || messages.value.length === 0) {
-      console.log('🌙 Luna: Skipping database save - no real email provided yet');
-      return; // Skip if no real email, chatId, or messages
+    if (!hasRealEmail || messages.value.length === 0) {
+      console.log('🌙 Luna: Skipping database save - no real email provided yet or no messages');
+      return; // Skip if no real email or messages
     }
 
     try {
@@ -700,9 +700,12 @@ export function useLunaStreaming() {
       // Import api dynamically to avoid circular dependencies
       const { api } = await import('../services/api');
       const response = await api.post('/api/guest-chat/save-conversation', conversationData);
+
+      console.log('🌙 Luna: Response from save-conversation:', response);
       
       // Store the database chatId returned from the API
       if (response.data?.data?.chatId) {
+        console.log('🌙 Luna: Storing database chatId:', response.data.data.chatId);
         localStorage.setItem('luna_database_chat_id', response.data.data.chatId);
         console.log('🌙 Luna: Stored database chatId:', response.data.data.chatId);
       }

@@ -444,7 +444,50 @@ const checkExistingCustomerInfo = async () => {
       const chatData = JSON.parse(signinChat);
       console.log('🌙 Luna: Loading chat from email signin:', chatData);
       
-      // Load the specific chat history
+      // Check if we have stored conversation history
+      const storedHistory = localStorage.getItem('luna_conversation_history');
+      if (storedHistory) {
+        try {
+          const conversationData = JSON.parse(storedHistory);
+          console.log('🌙 Luna: Loading stored conversation history:', conversationData.messages.length, 'messages');
+          
+          // Load the stored conversation directly
+          loadConversation(conversationData);
+          
+          // Store the database chat ID for future message saving
+          const databaseChatId = localStorage.getItem('luna_database_chat_id');
+          if (databaseChatId) {
+            localStorage.setItem('luna_database_chat_id', databaseChatId);
+            console.log('🌙 Luna: Set database chat ID:', databaseChatId);
+          }
+          
+          // Hide welcome form and show chat interface
+          showWelcomeForm.value = false;
+          showLoginForm.value = false;
+          console.log('🌙 Luna: Email signin complete with stored history - showing chat interface');
+          
+          // Force UI update and scroll to bottom
+          await nextTick();
+          void scrollToBottom(true);
+          
+          // Focus the input for immediate continuation
+          setTimeout(() => {
+            if (messageInput.value) {
+              messageInput.value.focus();
+            }
+          }, 500);
+          
+          // Clean up stored data
+          localStorage.removeItem('luna_signin_chat');
+          localStorage.removeItem('luna_conversation_history');
+          return;
+        } catch (error) {
+          console.error('🚨 Luna: Error loading stored conversation history:', error);
+          localStorage.removeItem('luna_conversation_history');
+        }
+      }
+      
+      // Fallback: Load the specific chat history from API
       await handleEmailSigninChat(savedEmail, chatData);
       
       // Clean up signin data
@@ -494,7 +537,7 @@ const handleStartNewSession = () => {
 // Handle email signin with specific chat
 const handleEmailSigninChat = async (email: string, chatData: { id: string; title: string }) => {
   try {
-    console.log('🌙 Luna: Loading chat history from email signin:', chatData.id);
+    console.log('🌙 Luna: Loading chat history from email signin:', chatData);
     
     const response = await api.get(`/api/guest-chat/${chatData.id}/history?email=${encodeURIComponent(email)}`);
     const historyData = response.data.data as { 
@@ -502,7 +545,9 @@ const handleEmailSigninChat = async (email: string, chatData: { id: string; titl
       chat?: { lunaSessionId?: string };
     };
     
-    if (historyData && historyData.messages) {
+    if (historyData && historyData.messages && historyData.messages.length > 0) {
+      console.log('🌙 Luna: Found', historyData.messages.length, 'messages to load');
+      
       // Load the conversation history
       loadConversation({
         messages: historyData.messages.map((msg) => ({
@@ -514,6 +559,7 @@ const handleEmailSigninChat = async (email: string, chatData: { id: string; titl
       });
       
       console.log('🌙 Luna: Loaded', historyData.messages.length, 'messages from email signin');
+      console.log('🌙 Luna: Messages after loading:', messages.value.length);
       
       // Store the database chat ID for future message saving
       if (historyData.chat?.lunaSessionId) {
@@ -522,13 +568,14 @@ const handleEmailSigninChat = async (email: string, chatData: { id: string; titl
         localStorage.setItem('luna_database_chat_id', chatData.id);
       }
       
+      // Hide welcome form and show chat interface
+      showWelcomeForm.value = false;
+      showLoginForm.value = false;
+      console.log('🌙 Luna: Email signin complete - showing chat interface');
+      
       // Force UI update and scroll to bottom
       await nextTick();
       void scrollToBottom(true);
-      
-      // Hide forms and show chat
-      showWelcomeForm.value = false;
-      showLoginForm.value = false;
       
       // Focus the input for immediate continuation
       setTimeout(() => {
@@ -536,6 +583,11 @@ const handleEmailSigninChat = async (email: string, chatData: { id: string; titl
           messageInput.value.focus();
         }
       }, 500);
+    } else {
+      console.log('🌙 Luna: No messages found in email signin chat, showing welcome form');
+      // No messages found - show welcome form
+      showWelcomeForm.value = true;
+      showLoginForm.value = false;
     }
   } catch (error) {
     console.error('🚨 Luna: Error loading email signin chat:', error);
@@ -634,7 +686,7 @@ const handleCustomerInfoCollected = async (info: { firstName: string; lastName: 
   localStorage.setItem('guestChat_userEmail', newEmail);
   
   // 🚀 Save current Luna conversation to database for future retrieval
-  if (messages.value.length > 0 && props.chatId) {
+  if (messages.value.length > 0) {
     try {
       console.log('🌙 Luna: Saving conversation to database for future retrieval');
       
@@ -673,8 +725,19 @@ const handleCustomerInfoCollected = async (info: { firstName: string; lastName: 
         // Don't use Luna session IDs anymore
         console.log('🌙 Luna: Creating new conversation - backend will generate chat ID');
       }
+
+      console.log('🌙 Luna: Conversation data: 11 ', conversationData);
+
+      const response = await api.post('/api/guest-chat/save-conversation', conversationData);
+
+      console.log('🌙 Luna: Response from save-conversation 11 :', response);
       
-      await api.post('/api/guest-chat/save-conversation', conversationData);
+      // Store the database chatId returned from the API
+      if (response.data?.data?.chatId) {
+        console.log('🌙 Luna: Storing database chatId:', response.data.data.chatId);
+        localStorage.setItem('luna_database_chat_id', response.data.data.chatId);
+        console.log('🌙 Luna: Stored database chatId:', response.data.data.chatId);
+      }
       
       console.log('🌙 Luna: Conversation saved successfully');
     } catch (error) {
@@ -702,7 +765,7 @@ const handleCustomerInfoCollected = async (info: { firstName: string; lastName: 
     });
     
     // 🚀 Save the updated conversation including the welcome message
-    if (props.chatId) {
+    if (messages.value.length > 0) {
       setTimeout(() => {
         void (async () => {
         try {
@@ -740,8 +803,21 @@ const handleCustomerInfoCollected = async (info: { firstName: string; lastName: 
             updatedConversationData.lunaSessionId = storedSessionId;
           }
           // For new conversations, let backend generate chat ID
+
+          console.log('🌙 Luna: Updated conversation data: 22 ', updatedConversationData);
+
+          const response = await api.post('/api/guest-chat/save-conversation', updatedConversationData);
+
+          console.log('🌙 Luna: Response from save-conversation 22 :', response);
           
-          await api.post('/api/guest-chat/save-conversation', updatedConversationData);
+          // Store the database chatId returned from the API
+          if (response.data?.data?.chatId) {
+            console.log('🌙 Luna: Storing database chatId:', response.data.data.chatId);
+            localStorage.setItem('luna_database_chat_id', response.data.data.chatId);
+            console.log('🌙 Luna: Stored database chatId:', response.data.data.chatId);
+          }
+          
+          console.log('🌙 Luna: Conversation saved successfully 22');
           console.log('🌙 Luna: Updated conversation with welcome message saved');
         } catch (error) {
           console.error('🚨 Luna: Error saving updated conversation:', error);

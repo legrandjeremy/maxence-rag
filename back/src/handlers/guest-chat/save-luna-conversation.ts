@@ -57,6 +57,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     console.log(`Saving Luna conversation for email: ${userEmail}, lunaSessionId: ${lunaSessionId}, databaseChatId: ${databaseChatId}`);
+    console.log(`Request body:`, JSON.stringify(requestBody, null, 2));
 
     let chat;
     
@@ -85,6 +86,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       }
     } else {
       // New conversation - create new chat without Luna session ID
+      console.log(`Creating new chat for new conversation (no IDs provided)`);
       chat = await chatService.createLunaChat(userEmail, undefined, {
         title: title || `Consultation Luna ${new Date().toLocaleDateString('fr-FR')}`
       });
@@ -92,10 +94,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // Clear any existing messages for this chat to avoid duplicates
+    console.log(`Clearing existing messages for chat: ${chat.id}`);
     await chatService.clearChatMessages(chat.id);
 
     // Save all messages with the correct user email and proper chat ID
+    console.log(`Saving ${messages.length} messages for chat: ${chat.id}`);
     for (const message of messages) {
+      console.log(`Saving message: ${message.role} - ${message.content.substring(0, 50)}...`);
       await chatService.saveMessage(userEmail, chat.id, {
         content: message.content,
         role: message.role,

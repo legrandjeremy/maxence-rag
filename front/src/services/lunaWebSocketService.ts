@@ -82,32 +82,19 @@ export class LunaWebSocketService {
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        console.log('🌙 Luna WebSocket: Establishing mystical connection...');
-        
         this.ws = new WebSocket(this.wsEndpoint);
         let completion = '';
         let reasoning = ''; // Used in streaming response handling
 
         this.ws.onopen = () => {
-          console.log('🌟 Luna WebSocket: Connection established');
-          
           // Try to get authentication token, but allow guest access
           const authStore = useAuthStore();
           const token = authStore.token;
           const userEmail = request.userEmail;
 
-          console.log('🔐 Luna WebSocket: Auth check:', {
-            hasToken: !!token,
-            tokenLength: token?.length || 0,
-            isAuthenticated: !!authStore.user,
-            userEmail: userEmail,
-            authStoreEmail: authStore.user?.email
-          });
-
           // For guest users, create a minimal token (email optional for initial connection)
           let sessionToken = token;
           if (!token) {
-            console.log('🎭 Luna WebSocket: Creating anonymous session - email will be provided later');
             // Create a simple guest token structure (email can be empty initially)
             sessionToken = btoa(JSON.stringify({
               sub: `guest_${Date.now()}`,
@@ -120,15 +107,12 @@ export class LunaWebSocketService {
 
           // Always allow connection - email will be validated when saving to database
           if (!sessionToken) {
-            console.error('🚨 Luna WebSocket: Failed to create session token');
             callbacks.onError('Failed to establish connection');
             return;
           }
 
           // 🚀 Store session token for use in sendChunkedRequest
           this.currentSessionToken = sessionToken;
-
-          console.log('📤 Luna WebSocket: Sending session start with token...');
           
           // Start session
           try {
@@ -138,7 +122,6 @@ export class LunaWebSocketService {
             }));
             console.log('✅ Luna WebSocket: Session start message sent');
           } catch (error) {
-            console.error('🚨 Luna WebSocket: Failed to send start message:', error);
             callbacks.onError('Failed to start session');
           }
         };
@@ -163,7 +146,6 @@ export class LunaWebSocketService {
 
             // Handle timeout from API Gateway
             if (message.data.startsWith('{"message": "Endpoint request timed out"')) {
-              console.warn('⚠️ Luna WebSocket: Request timeout');
               return;
             }
 
@@ -171,7 +153,6 @@ export class LunaWebSocketService {
             const data = JSON.parse(message.data);
 
             if (!data.status) {
-              console.error('🚨 Luna WebSocket: Invalid response format:', data);
               callbacks.onError('Invalid response format from Luna');
               return;
             }
@@ -188,12 +169,10 @@ export class LunaWebSocketService {
                 if (data.completion || data.completion === '') {
                   reasoning += data.completion; // Accumulate reasoning text
                   callbacks.onReasoning(data.completion);
-                  console.log('🧠 Luna WebSocket: Reasoning progress:', reasoning.length);
                 }
                 break;
 
               case LunaStreamingStatus.STREAMING_END:
-                console.log('✨ Luna WebSocket: Streaming completed');
                 callbacks.onComplete({
                   completion,
                   stop_reason: data.stop_reason || 'end_turn',

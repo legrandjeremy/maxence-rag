@@ -101,12 +101,12 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const generalToken = uuidv4();
     await chatService.storeSigninToken(generalToken, {
       email: userEmail,
-      chatId: undefined,
+      chatId: chatId,
       expiresAt,
       createdAt
     });
 
-    const generalSigninUrl = `${baseUrl}/welcome.html?token=${generalToken}`;
+    const generalSigninUrl = `${baseUrl}/welcome.html?token=${generalToken}&chat=${chatId}`;
 
     // Send email using SES
     const emailService = new EmailService();
