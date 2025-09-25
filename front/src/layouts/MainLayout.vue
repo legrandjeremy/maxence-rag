@@ -1,30 +1,5 @@
 <template>
   <q-layout view="lHh Lpr lFf">
-    <q-header elevated>
-      <q-toolbar>
-        <q-btn v-if="authStore.isSignedIn" flat dense round icon="menu" aria-label="Menu" @click="toggleLeftDrawer" />
-
-        <q-toolbar-title>Luna</q-toolbar-title>
-
-        <q-select
-          v-model="locale"
-          :options="localeOptions"
-          dense
-          emit-value
-          map-options
-          style="min-width: 100px"
-          class="q-mr-md"
-        />
-
-        <q-tooltip v-if="authStore.isSignedIn" anchor="bottom middle" self="top middle">
-          {{ authStore.userEmail }}
-        </q-tooltip>
-        <q-icon v-if="authStore.isSignedIn" name="person" class="q-mr-sm" @click="router.push('/profile')" style="cursor: pointer;" />
-
-        <AuthButton />
-      </q-toolbar>
-    </q-header>
-
     <q-drawer v-model="leftDrawerOpen" bordered>
       <q-list>
         <q-item-label header> Menu </q-item-label>
@@ -190,7 +165,6 @@
 </template>
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
-import AuthButton from 'components/AuthButton.vue'
 import { useQuasar } from 'quasar'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from 'src/stores/authStore'
@@ -234,10 +208,6 @@ if ($q.cookies.has('locale')) {
 }
 
 const leftDrawerOpen = ref(false)
-
-function toggleLeftDrawer() {
-  leftDrawerOpen.value = !leftDrawerOpen.value
-}
 
 const localeOptions = [
   { value: 'en-US', label: 'English' },

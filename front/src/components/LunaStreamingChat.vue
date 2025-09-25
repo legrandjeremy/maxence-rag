@@ -159,7 +159,7 @@
           class="send-button"
           :class="{ sending: isProcessing || isSending }"
         >
-          <span v-if="!isProcessing">Consulter Luna ✨</span>
+          <span v-if="!isProcessing"> Envoyer ✨</span>
           <span v-else>Connexion mystique...</span>
         </button>
       </div>
@@ -385,18 +385,10 @@ const connectionStatusText = computed(() => {
 
 const inputPlaceholder = computed(() => {
   if (!canSendMessage.value) {
-    return 'Connexion avec Luna en cours...';
+    return 'Connexion en cours ...';
   }
   
-  if (messages.value.length === 0) {
-    // Check if customer info is available
-    if (customerInfo.value) {
-      return `Bonjour ${customerInfo.value.firstName}, partagez ce qui vous préoccupe...`;
-    }
-    return 'Partagez ce que vous ressentez avec Luna...';
-  }
-  
-  return 'Continuez votre consultation avec Luna...';
+  return 'Ecrivez-ici ...';
 });
 
 const currentReasoning = computed(() => state.currentReasoning);
@@ -706,7 +698,6 @@ const handleCustomerInfoCollected = async (info: { firstName: string; lastName: 
       
       // Check if we're continuing an existing conversation
       const databaseChatId = localStorage.getItem('luna_database_chat_id');
-      const storedSessionId = localStorage.getItem('luna_current_session_id');
       
       const conversationData: {
         email: string;
@@ -745,13 +736,6 @@ const handleCustomerInfoCollected = async (info: { firstName: string; lastName: 
       const response = await api.post('/api/guest-chat/save-conversation', conversationData);
 
       console.log('🌙 Luna: Response from save-conversation 11 :', response);
-      
-      // Store the database chatId returned from the API
-      if (response.data?.data?.chatId) {
-        console.log('🌙 Luna: Storing database chatId:', response.data.data.chatId);
-        localStorage.setItem('luna_database_chat_id', response.data.data.chatId);
-        console.log('🌙 Luna: Stored database chatId:', response.data.data.chatId);
-      }
       
       console.log('🌙 Luna: Conversation saved successfully');
     } catch (error) {

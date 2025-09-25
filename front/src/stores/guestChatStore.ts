@@ -54,7 +54,7 @@ export const useGuestChatStore = defineStore('guestChat', () => {
   const conversationStartedAt = ref<number | null>(null);
   const isBlockedForPayment = ref(false);
   const isPaid = ref(false);
-  const freeSecondsTotal = 1 * 60;
+  const freeSecondsTotal = 7 * 60;
   const remainingSeconds = ref<number>(freeSecondsTotal);
   let timerId: number | null = null;
 

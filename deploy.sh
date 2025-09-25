@@ -128,8 +128,9 @@ load_environment_variables() {
     export TF_STATE_REGION="us-east-1"
     export TF_VAR_CLOUDFRONT_DOMAIN="$CLOUDFRONT_DOMAIN"
     export CLOUDFRONT_DOMAIN="$CLOUDFRONT_DOMAIN"
-    export STRIPE_SECRET_KEY="${STRIPE_SECRET_KEY:-sk_test_51RwQBw0Xrngfa9BoHFO3cedbV8WbNr2iHA7SN3eRZcuSnF2NrzBrphTDY9JwBHnEyX0gIgqx7JBDqKAWFyPa8Klf00MBfGGTEe}"
-    export STRIPE_SECRET_KEY="${STRIPE_SECRET_KEY:-sk_test_51RwQBw0Xrngfa9BoHFO3cedbV8WbNr2iHA7SN3eRZcuSnF2NrzBrphTDY9JwBHnEyX0gIgqx7JBDqKAWFyPa8Klf00MBfGGTEe}"
+    export STRIPE_SECRET_KEY="${STRIPE_SECRET_KEY:-}"
+    export STRIPE_PUBLISHABLE_KEY="${STRIPE_PUBLISHABLE_KEY:-}"
+    export WSS_URL="${WSS_URL:-}"
     
     log_success "Environment variables loaded"
 }
@@ -305,11 +306,21 @@ deploy_frontend() {
 API_URL=$API_URL
 AUTH0_DOMAIN=$AUTH0_DOMAIN
 AUTH0_CLIENT_ID=$AUTH0_CLIENT_ID
-LUNA_WS_ENDPOINT=wss://4i704zb47j.execute-api.us-east-1.amazonaws.com/staging/
-VITE_LUNA_WS_ENDPOINT=wss://4i704zb47j.execute-api.us-east-1.amazonaws.com/staging/
-VITE_STRIPE_PUBLISHABLE_KEY=pk_test_51RwQBw0Xrngfa9BoEBjNo1ZgnPuNXQmaUpXvTZBJyd6mSz4vnshBVvxqpFUWTjgeY9mVr28zLf6ILfWyYMO34Zwq00if2Y1k5Q
-STRIPE_PUBLISHABLE_KEY=pk_test_51RwQBw0Xrngfa9BoEBjNo1ZgnPuNXQmaUpXvTZBJyd6mSz4vnshBVvxqpFUWTjgeY9mVr28zLf6ILfWyYMO34Zwq00if2Y1k5Q
+LUNA_WS_ENDPOINT=$WSS_URL
+VITE_LUNA_WS_ENDPOINT=$WSS_URL
+VITE_STRIPE_PUBLISHABLE_KEY=$STRIPE_PUBLISHABLE_KEY
+STRIPE_PUBLISHABLE_KEY=$STRIPE_PUBLISHABLE_KEY
 EOF
+
+    log_info "Environment configuration for build created"
+    log_info "API_URL: $API_URL"
+    log_info "AUTH0_DOMAIN: $AUTH0_DOMAIN"
+    log_info "AUTH0_CLIENT_ID: $AUTH0_CLIENT_ID"
+    log_info "WSS_URL: $WSS_URL"
+    log_info "VITE_LUNA_WS_ENDPOINT: $WSS_URL"
+    log_info "VITE_STRIPE_PUBLISHABLE_KEY: $STRIPE_PUBLISHABLE_KEY"
+    log_info "STRIPE_PUBLISHABLE_KEY: $STRIPE_PUBLISHABLE_KEY"
+    log_info "STRIPE_SECRET_KEY: $STRIPE_SECRET_KEY"
     
     # Generate welcome page with CloudFront domain and API URL
     log_info "Generating welcome page with CloudFront domain and API URL..."

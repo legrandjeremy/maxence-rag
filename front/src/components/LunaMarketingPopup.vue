@@ -155,7 +155,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 
 const emit = defineEmits<{
   'continue-to-payment': [];
@@ -196,18 +196,6 @@ const handleClose = () => {
 // Initialize with random personal message
 onMounted(() => {
   personalMessage.value = personalMessages[Math.floor(Math.random() * personalMessages.length)];
-  
-  // Simulate countdown
-  const countdown = setInterval(() => {
-    const minutes = parseInt(timeLeft.value.match(/(\d+)h (\d+)min/)?.[2] || '0');
-    const hours = parseInt(timeLeft.value.match(/(\d+)h (\d+)min/)?.[1] || '0');
-    
-    if (minutes > 0) {
-      timeLeft.value = `${hours}h ${minutes - 1}min`;
-    } else if (hours > 0) {
-      timeLeft.value = `${hours - 1}h 59min`;
-    }
-  }, 60000); // Update every minute
   
   // Simulate remaining spots decrease
   setTimeout(() => {

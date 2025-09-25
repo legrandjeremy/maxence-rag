@@ -145,7 +145,7 @@ const resetForm = () => {
   isLoading.value = false;
   
   // Focus the email input
-  nextTick(() => {
+  void nextTick(() => {
     emailInput.value?.focus();
   });
 };

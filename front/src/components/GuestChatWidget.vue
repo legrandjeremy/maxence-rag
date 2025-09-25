@@ -114,29 +114,33 @@
           <span class="typing-dots"><span></span><span></span><span></span></span>
         </div>
 
-        <q-input
-          v-model="messageInput"
-          outlined
-          :placeholder="inputPlaceholder"
-          :loading="guestChatStore.isSendingMessage"
-          :disable="guestChatStore.isSendingMessage || !guestChatStore.currentChat || guestChatStore.isBlockedForPayment"
-          @keyup.enter="sendMessage"
-          hide-bottom-space
-          class="luna-input"
-        >
-          <template v-slot:append>
-            <q-btn
-              flat
-              dense
-              round
-              icon="send"
-              size="md"
-              :disable="!messageInput.trim() || guestChatStore.isSendingMessage || !guestChatStore.currentChat || guestChatStore.isBlockedForPayment"
-              @click="sendMessage"
-              class="luna-send-btn"
-            />
-          </template>
-        </q-input>
+        <div class="luna-input-container">
+          <q-input
+            v-model="messageInput"
+            outlined
+            :placeholder="inputPlaceholder"
+            :loading="guestChatStore.isSendingMessage"
+            :disable="guestChatStore.isSendingMessage || !guestChatStore.currentChat || guestChatStore.isBlockedForPayment"
+            @keyup.enter="sendMessage"
+            hide-bottom-space
+            class="luna-input"
+            rows="1"
+            autogrow
+            input-style="font-size: 16px; line-height: 1.4;"
+          />
+          <q-btn
+            flat
+            round
+            icon="send"
+            :disable="!messageInput.trim() || guestChatStore.isSendingMessage || !guestChatStore.currentChat || guestChatStore.isBlockedForPayment"
+            @click="sendMessage"
+            class="luna-send-btn"
+          >
+            <q-tooltip v-if="messageInput.trim()" class="bg-primary">
+              Envoyer le message
+            </q-tooltip>
+          </q-btn>
+        </div>
 
         <!-- Quick Actions for first interaction -->
         <div v-if="props.showQuickActions && messages.length <= 1" class="quick-actions-iframe q-mt-sm">
@@ -627,36 +631,250 @@ const formattedRemaining = computed(() => {
 
 .chat-input-iframe {
   background: var(--q-background);
-  padding-bottom: 20px;
+  padding: 16px 20px 20px 20px;
+}
+
+/* Enhanced Input Container for Mobile-First Design */
+.luna-input-container {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  width: 100%;
+  position: relative;
+  box-sizing: border-box;
 }
 
 .luna-input {
-  background: var(--q-background);
-  border: 1px solid var(--q-separator-color);
-  border-radius: 12px;
-  padding: 0 16px;
-  font-size: 16px;
-  color: var(--q-text-color);
-
-  &::placeholder {
+  flex: 1;
+  min-width: 0; /* Prevent flex overflow */
+  
+  /* Override Quasar styles for consistent appearance */
+  :deep(.q-field__control) {
+    background: var(--q-background);
+    border: 2px solid var(--q-separator-color);
+    border-radius: 24px !important;
+    padding: 0 20px;
+    min-height: 48px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  :deep(.q-field__control):before,
+  :deep(.q-field__control):after {
+    border: none !important;
+  }
+  
+  :deep(.q-field__native) {
+    font-size: 16px !important;
+    line-height: 1.5 !important;
+    padding: 12px 0;
+    color: var(--q-text-color);
+    font-weight: 400;
+  }
+  
+  :deep(.q-field__native)::placeholder {
     color: var(--q-text-color-light);
+    opacity: 0.7;
+    font-size: 16px;
   }
 
-  &:focus {
+  /* Focus state */
+  &.q-field--focused :deep(.q-field__control) {
+    border-color: var(--q-primary) !important;
+    box-shadow: 0 0 0 3px rgba(var(--q-primary-rgb), 0.12), 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: translateY(-1px);
+  }
+
+  /* Hover state */
+  &:not(.q-field--focused):hover :deep(.q-field__control) {
+    border-color: rgba(var(--q-primary-rgb), 0.6);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  }
+  
+  /* Loading state */
+  &.q-field--loading :deep(.q-field__control) {
     border-color: var(--q-primary);
+  }
+  
+  /* Disabled state */
+  &.q-field--disabled :deep(.q-field__control) {
+    opacity: 0.6;
+    background: rgba(var(--q-separator-color-rgb), 0.1);
   }
 }
 
 .luna-send-btn {
-  color: var(--q-primary);
-  border-radius: 12px;
-  background: var(--q-background);
-  border: 1px solid var(--q-separator-color);
-
-  &:hover {
-    background: var(--q-primary);
-    color: white;
+  min-width: 44px !important;
+  width: 44px;
+  height: 44px;
+  background: var(--q-primary);
+  color: white;
+  border: none;
+  border-radius: 22px;
+  box-shadow: 0 3px 12px rgba(var(--q-primary-rgb), 0.4);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+  
+  /* Icon styling */
+  .q-icon {
+    font-size: 20px;
   }
+
+  &:hover:not(.q-btn--disable) {
+    background: var(--q-primary);
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 0 6px 20px rgba(var(--q-primary-rgb), 0.5);
+  }
+
+  &:active:not(.q-btn--disable) {
+    transform: translateY(0) scale(0.98);
+    box-shadow: 0 2px 8px rgba(var(--q-primary-rgb), 0.4);
+  }
+
+  &.q-btn--disable {
+    background: rgba(var(--q-text-color-rgb), 0.12);
+    color: rgba(var(--q-text-color-rgb), 0.26);
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+}
+
+/* Mobile-specific optimizations */
+@media (max-width: 768px) {
+  .chat-input-iframe {
+    padding: 12px 16px 16px 16px;
+    /* Ensure input area is always visible above mobile keyboard */
+    position: sticky;
+    bottom: 0;
+    background: var(--q-background);
+    border-top: 1px solid rgba(var(--q-separator-color-rgb), 0.3);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-sizing: border-box;
+  }
+  
+  .luna-input-container {
+    gap: 10px;
+    align-items: center; /* Better vertical alignment on mobile */
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+  
+  .luna-input {
+    flex: 1;
+    min-width: 0;
+    
+    /* Larger touch targets for mobile */
+    :deep(.q-field__control) {
+      min-height: 52px !important;
+      padding: 0 18px !important;
+      border-radius: 26px !important;
+    }
+    
+    :deep(.q-field__native) {
+      font-size: 16px !important; /* Prevent zoom on iOS */
+      padding: 14px 0 !important;
+    }
+    
+    /* Enhanced focus state for mobile */
+    &.q-field--focused :deep(.q-field__control) {
+      box-shadow: 0 0 0 2px rgba(var(--q-primary-rgb), 0.2), 0 8px 24px rgba(0, 0, 0, 0.15) !important;
+      transform: translateY(-2px);
+    }
+  }
+  
+  .luna-send-btn {
+    min-width: 48px !important;
+    width: 48px !important;
+    height: 48px !important;
+    border-radius: 24px !important;
+    flex-shrink: 0;
+    
+    .q-icon {
+      font-size: 22px;
+    }
+    
+    /* Enhanced touch feedback */
+    &:active:not(.q-btn--disable) {
+      transform: scale(0.95);
+      transition: transform 0.1s ease;
+    }
+  }
+}
+
+/* Extra small screens (phones in portrait) */
+@media (max-width: 480px) {
+  .chat-input-iframe {
+    padding: 10px 12px 14px 12px;
+  }
+  
+  .luna-input-container {
+    gap: 8px;
+  }
+  
+  .luna-input {
+    :deep(.q-field__control) {
+      padding: 0 16px !important;
+    }
+    
+    :deep(.q-field__native) {
+      padding: 12px 0 !important;
+    }
+  }
+}
+
+/* High-DPI displays optimization */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .luna-send-btn {
+    box-shadow: 0 2px 8px rgba(var(--q-primary-rgb), 0.3);
+    
+    &:hover:not(.q-btn--disable) {
+      box-shadow: 0 4px 16px rgba(var(--q-primary-rgb), 0.4);
+    }
+  }
+}
+
+/* Dark mode enhancements */
+body.body--dark {
+  .luna-input {
+    :deep(.q-field__control) {
+      background: var(--q-dark-page) !important;
+      border-color: rgba(255, 255, 255, 0.12) !important;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+    }
+    
+    &.q-field--focused :deep(.q-field__control) {
+      border-color: var(--q-primary) !important;
+      box-shadow: 0 0 0 3px rgba(var(--q-primary-rgb), 0.15), 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+    }
+    
+    &:not(.q-field--focused):hover :deep(.q-field__control) {
+      border-color: rgba(var(--q-primary-rgb), 0.7) !important;
+    }
+  }
+  
+  .chat-input-iframe {
+    background: var(--q-dark-page);
+    border-top-color: rgba(255, 255, 255, 0.08);
+  }
+}
+
+/* Accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+  .luna-input,
+  .luna-send-btn {
+    transition: none;
+  }
+  
+  .luna-send-btn:hover:not(.q-btn--disable) {
+    transform: none;
+  }
+}
+
+/* Focus visible for keyboard navigation */
+.luna-send-btn:focus-visible {
+  outline: 2px solid var(--q-primary);
+  outline-offset: 2px;
 }
 
 .quick-actions-iframe {
