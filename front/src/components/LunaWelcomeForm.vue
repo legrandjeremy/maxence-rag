@@ -95,6 +95,27 @@
             </div>
           </div>
 
+          <div class="form-field">
+            <label for="gender" class="field-label">
+              <span class="label-icon">⚡</span>
+              Genre
+            </label>
+            <select
+              id="gender"
+              v-model="formData.gender"
+              required
+              class="field-input field-select"
+              @change="clearError"
+            >
+              <option value="">Sélectionnez votre genre</option>
+              <option value="femme">Femme</option>
+              <option value="homme">Homme</option>
+            </select>
+            <div class="field-hint">
+              Luna adapte ses révélations selon votre énergie féminine ou masculine
+            </div>
+          </div>
+
           <div v-if="error" class="error-message">
             {{ error }}
           </div>
@@ -149,6 +170,7 @@ interface CustomerInfo {
   lastName: string;
   email: string;
   birthDate: string;
+  gender: string;
 }
 
 const emit = defineEmits<{
@@ -160,7 +182,8 @@ const formData = reactive<CustomerInfo>({
   firstName: '',
   lastName: '',
   email: '',
-  birthDate: ''
+  birthDate: '',
+  gender: ''
 });
 
 const error = ref<string>('');
@@ -193,6 +216,10 @@ const validateForm = (): boolean => {
   }
   if (!formData.birthDate) {
     error.value = 'Veuillez entrer votre date de naissance';
+    return false;
+  }
+  if (!formData.gender) {
+    error.value = 'Veuillez sélectionner votre genre';
     return false;
   }
 
@@ -390,6 +417,22 @@ const handleSubmit = async () => {
   border-color: #c084fc;
   box-shadow: 0 0 0 3px rgba(192, 132, 252, 0.2);
   background: rgba(255, 255, 255, 0.15);
+}
+
+.field-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23c084fc' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 1.5em 1.5em;
+  padding-right: 2.5rem;
+  cursor: pointer;
+}
+
+.field-select option {
+  background: #1e1b4b;
+  color: #f8fafc;
+  padding: 0.5rem;
 }
 
 .field-hint {

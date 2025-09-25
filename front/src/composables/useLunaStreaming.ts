@@ -57,6 +57,9 @@ export function useLunaStreaming() {
 
   // 🚀 Payment form state (embedded Stripe form)
   const showPaymentForm = ref(false);
+  
+  // 🚀 Marketing popup state (first step of 2-step conversion)
+  const showMarketingPopup = ref(false);
 
   // 🚀 Load payment state from localStorage (no session recovery)
   const loadPaymentState = () => {
@@ -290,8 +293,9 @@ export function useLunaStreaming() {
         }
         
         if (remainingSeconds.value <= 0 && !isPaid.value) {
-          console.log('🌙 Luna: Free time expired, blocking for payment');
+          console.log('🌙 Luna: Free time expired, showing marketing popup first');
           isBlockedForPayment.value = true;
+          showMarketingPopup.value = true; // Show marketing popup first
           savePaymentState();
           if (timerId) {
             window.clearInterval(timerId);
@@ -306,14 +310,37 @@ export function useLunaStreaming() {
   };
 
   const openPayment = () => {
-    console.log('🌙 Luna: Opening embedded Stripe payment form for €9');
+    console.log('🌙 Luna: Opening 2-step conversion flow - starting with marketing popup');
+    showMarketingPopup.value = true;
+  };
+
+  // 🚀 Marketing popup handlers (Step 1)
+  const handleMarketingContinue = () => {
+    console.log('🌙 Luna: User chose to continue from marketing popup to payment');
+    showMarketingPopup.value = false;
     showPaymentForm.value = true;
   };
 
-  // 🚀 Close payment form
+  const handleMarketingMaybeLater = () => {
+    console.log('🌙 Luna: User chose maybe later from marketing popup');
+    showMarketingPopup.value = false;
+    // Keep isBlockedForPayment true so they can't continue without paying
+    state.error = 'La session gratuite est terminée. Vous devez régler 9€ pour continuer.';
+  };
+
+  const closeMarketingPopup = () => {
+    console.log('🌙 Luna: Marketing popup closed');
+    showMarketingPopup.value = false;
+    // Keep isBlockedForPayment true
+    state.error = 'La session gratuite est terminée. Cliquez sur "Débloquer" pour continuer.';
+  };
+
+  // 🚀 Close payment form (Step 2)
   const closePaymentForm = () => {
     showPaymentForm.value = false;
     console.log('🌙 Luna: Payment form closed');
+    // If they close payment form, show option to reopen marketing
+    state.error = 'Paiement annulé. Cliquez sur "Débloquer" pour voir les options.';
   };
 
   const handlePaymentSuccess = () => {
@@ -431,7 +458,8 @@ export function useLunaStreaming() {
             firstName: customerInfo.firstName,
             lastName: customerInfo.lastName,
             email: customerInfo.email,
-            birthDate: customerInfo.birthDate
+            birthDate: customerInfo.birthDate,
+            gender: customerInfo.gender
           });
         } else {
           console.warn('🚨 Luna: No customer info found in localStorage - Luna may ask for basic information');
@@ -737,6 +765,7 @@ export function useLunaStreaming() {
     isPaid,
     remainingSeconds,
     showPaymentForm,
+    showMarketingPopup,
     
     // Methods
     sendMessageToLuna,
@@ -753,6 +782,9 @@ export function useLunaStreaming() {
     closePaymentForm,
     handlePaymentSuccess,
     handlePaymentError,
+    handleMarketingContinue,
+    handleMarketingMaybeLater,
+    closeMarketingPopup,
     loadConversation,
     saveConversationToDatabase,
     loadPaymentState,

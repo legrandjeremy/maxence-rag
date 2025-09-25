@@ -235,7 +235,7 @@ Cliquez maintenant pour rejoindre les âmes qui ont décidé d'avancer.</span>
           
           <div class="payment-guarantee">
             <span class="guarantee-icon">🛡️</span>
-            Offre sans engagement. Abonnement résiliable à tout moment via l'espace client.<br />
+            Offre sans engagement.<br />
             Paiement géré par un prestataire certifié PCI DSS. Accès immédiat après validation.<br />
             Aucun conseil médical, juridique ou professionnel n'est délivré par l'IA Luna.
           </div>
@@ -253,7 +253,15 @@ Cliquez maintenant pour rejoindre les âmes qui ont décidé d'avancer.</span>
       </div>
     </div>
 
-    <!-- 🚀 Payment Form Overlay -->
+    <!-- 🚀 Marketing Popup (Step 1 of 2-step conversion) -->
+    <LunaMarketingPopup
+      v-if="showMarketingPopup"
+      @continue-to-payment="handleMarketingContinue"
+      @maybe-later="handleMarketingMaybeLater"
+      @close="closeMarketingPopup"
+    />
+
+    <!-- 🚀 Payment Form Overlay (Step 2 of 2-step conversion) -->
     <div v-if="showPaymentForm" class="payment-overlay" @click.self="closePaymentForm">
       <StripePaymentForm
         :user-email="userEmailForPayment"
@@ -288,6 +296,7 @@ import { useAuthStore } from '../stores/authStore';
 import StripePaymentForm from './StripePaymentForm.vue';
 import LunaWelcomeForm from './LunaWelcomeForm.vue';
 import LunaLoginForm from './LunaLoginForm.vue';
+import LunaMarketingPopup from './LunaMarketingPopup.vue';
 import { api } from '../services/api';
 
 // Props and emits
@@ -332,10 +341,14 @@ const {
   shouldShowTimer,
   shouldShowPaymentBanner,
   showPaymentForm,
+  showMarketingPopup,
   openPayment,
   closePaymentForm,
   handlePaymentSuccess,
   handlePaymentError,
+  handleMarketingContinue,
+  handleMarketingMaybeLater,
+  closeMarketingPopup,
   loadPaymentState,
   checkPaymentFromURL
 } = useLunaStreaming();
@@ -430,6 +443,7 @@ const customerInfo = ref<{
   lastName: string;
   email: string;
   birthDate: string;
+  gender: string;
 } | null>(null);
 
 // Check if customer info already exists and handle session recovery
@@ -674,7 +688,7 @@ const handleLoginSuccess = async (loginData: { email: string }) => {
 };
 
 // 🌙 Handle customer information collection
-const handleCustomerInfoCollected = async (info: { firstName: string; lastName: string; email: string; birthDate: string }) => {
+const handleCustomerInfoCollected = async (info: { firstName: string; lastName: string; email: string; birthDate: string; gender: string }) => {
   customerInfo.value = info;
   showWelcomeForm.value = false;
   

@@ -26,9 +26,9 @@ export class EmailService {
 
   constructor() {
     this.sesClient = new SESClient({ 
-      region: process.env.AWS_REGION || 'eu-west-1' 
+      region: process.env.AWS_REGION || 'us-east-1' 
     });
-    this.fromEmail = 'legrandjeremy+luna@gmail.com'; // Verified SES identity
+    this.fromEmail = 'contact@mailer.luna-medium.ai'; // Verified SES identity
   }
 
   /**

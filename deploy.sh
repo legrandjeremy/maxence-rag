@@ -25,7 +25,7 @@ BACKEND_DIR="$PROJECT_ROOT/back"
 FRONTEND_DIR="$PROJECT_ROOT/front"
 
 # Default values
-ENVIRONMENT="staging"
+ENVIRONMENT="prod"
 SKIP_INFRA=false
 SKIP_BACKEND=false
 SKIP_FRONTEND=false
@@ -122,10 +122,12 @@ load_environment_variables() {
     export AWS_DEFAULT_REGION="$AWS_REGION"
     
     # OpenTofu Backend Configuration
-    export TF_STATE_BUCKET="${TF_STATE_BUCKET:-${ENVIRONMENT}-tofu-state-maxence-rag}"
+    export TF_STATE_BUCKET="${ENVIRONMENT}-tofu-luna-medium"
+    echo "TF_STATE_BUCKET: $TF_STATE_BUCKET"
     export TF_STATE_KEY="${TF_STATE_KEY:-${ENVIRONMENT}/tofu.tfstate}"
-    export TF_STATE_REGION="${TF_STATE_REGION:-eu-west-1}"
-    export TF_DYNAMODB_TABLE="${TF_DYNAMODB_TABLE:-x-github-deployments}"
+    export TF_STATE_REGION="us-east-1"
+    export TF_VAR_CLOUDFRONT_DOMAIN="$CLOUDFRONT_DOMAIN"
+    export CLOUDFRONT_DOMAIN="$CLOUDFRONT_DOMAIN"
     export STRIPE_SECRET_KEY="${STRIPE_SECRET_KEY:-sk_test_51RwQBw0Xrngfa9BoHFO3cedbV8WbNr2iHA7SN3eRZcuSnF2NrzBrphTDY9JwBHnEyX0gIgqx7JBDqKAWFyPa8Klf00MBfGGTEe}"
     export STRIPE_SECRET_KEY="${STRIPE_SECRET_KEY:-sk_test_51RwQBw0Xrngfa9BoHFO3cedbV8WbNr2iHA7SN3eRZcuSnF2NrzBrphTDY9JwBHnEyX0gIgqx7JBDqKAWFyPa8Klf00MBfGGTEe}"
     
@@ -185,24 +187,36 @@ deploy_infrastructure() {
     log_info "Starting infrastructure deployment..."
     
     cd "$INFRA_DIR"
+
+    echo "TF_STATE_BUCKET: $TF_STATE_BUCKET"
+    echo "TF_STATE_KEY: $TF_STATE_KEY"
+    echo "TF_STATE_REGION: $TF_STATE_REGION"
+    echo "TF_VAR_ENVIRONMENT: $TF_VAR_ENVIRONMENT"
+
+    export TF_VAR_CLOUDFRONT_DOMAIN="$CLOUDFRONT_DOMAIN"
+    export CLOUDFRONT_DOMAIN="$CLOUDFRONT_DOMAIN"
     
     # Initialize OpenTofu with backend configuration
-    log_info "Initializing OpenTofu..."
+    log_info "Initializing OpenTofu2..."
     tofu init \
         -backend-config="bucket=$TF_STATE_BUCKET" \
         -backend-config="key=$TF_STATE_KEY" \
         -backend-config="region=$TF_STATE_REGION" \
-        -backend-config="dynamodb_table=$TF_DYNAMODB_TABLE" \
+        -backend-config="dynamodb_table=luna-deployments" \
         -reconfigure
     
     # Validate OpenTofu configuration
     log_info "Validating OpenTofu configuration..."
     tofu validate
+
+    echo "CLOUDFRONT_DOMAIN: $CLOUDFRONT_DOMAIN"
+    echo "TF_VAR_ENVIRONMENT: $TF_VAR_ENVIRONMENT"
     
     # Plan the deployment
     log_info "Planning OpenTofu deployment..."
     tofu plan \
         -var="ENVIRONMENT=$TF_VAR_ENVIRONMENT" \
+        -var="CLOUDFRONT_DOMAIN=${CLOUDFRONT_DOMAIN:-}" \
         -out="$ENVIRONMENT.tfplan"
     
     # Apply the deployment
@@ -236,10 +250,10 @@ deploy_backend() {
     # Deploy the SAM application
     log_info "Deploying SAM application..."
     sam deploy \
-        --stack-name "maxence-rag-$ENVIRONMENT" \
+        --stack-name "luna-medium-$ENVIRONMENT" \
         --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
         --s3-bucket $TF_STATE_BUCKET \
-        --s3-prefix "maxence-rag-$ENVIRONMENT" \
+        --s3-prefix "luna-medium-$ENVIRONMENT" \
         --no-confirm-changeset \
         --no-fail-on-empty-changeset \
         --parameter-overrides \
@@ -257,7 +271,7 @@ deploy_backend() {
     # Get API Gateway URL from CloudFormation outputs
     log_info "Retrieving API Gateway URL..."
     API_GATEWAY_URL=$(aws cloudformation describe-stacks \
-        --stack-name "maxence-rag-$ENVIRONMENT" \
+        --stack-name "luna-medium-$ENVIRONMENT" \
         --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' \
         --output text)
     
@@ -349,8 +363,8 @@ EOF
     
     # Get S3 bucket name from SSM Parameter Store
     log_info "Retrieving S3 bucket information..."
-    S3_BUCKET="$ENVIRONMENT-uci-maxence-rag-application-front-eu-west-1"
-    S3_BUCKET_EU_CENTRAL="$ENVIRONMENT-uci-maxence-rag-application-front-eu-central-2"
+    S3_BUCKET="$ENVIRONMENT-luna-medium-application-front-eu-west-1"
+    S3_BUCKET_EU_CENTRAL="$ENVIRONMENT-luna-medium-application-front-eu-west-3"
     
     if [[ -n "$S3_BUCKET" ]]; then
         # Sync to S3
@@ -491,16 +505,16 @@ main() {
         log_info "Skipping infrastructure deployment"
     fi
 
-    if [[ "$SKIP_FRONTEND" != true ]]; then
-        deploy_frontend
-    else
-        log_info "Skipping frontend deployment"
-    fi
-    
     if [[ "$SKIP_BACKEND" != true ]]; then
         deploy_backend
     else
         log_info "Skipping backend deployment"
+    fi
+
+    if [[ "$SKIP_FRONTEND" != true ]]; then
+        deploy_frontend
+    else
+        log_info "Skipping frontend deployment"
     fi
     
     echo ""

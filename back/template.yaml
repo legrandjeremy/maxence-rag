@@ -138,7 +138,7 @@ Resources:
   PlayerManagementDocumentsBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub ${Environment}-luna-front-documents
+      BucketName: !Sub ${Environment}-luna-medium-documents
       VersioningConfiguration:
         Status: Enabled
       CorsConfiguration:

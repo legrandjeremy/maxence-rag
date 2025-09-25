@@ -238,7 +238,7 @@
         </h2>
         <div class="pricing-content">
           <div class="pricing-explanation">
-            <h3 class="pricing-subtitle">Pourquoi 5€ seulement ?</h3>
+            <h3 class="pricing-subtitle">Pourquoi 9€ seulement ?</h3>
             <p class="pricing-text">
               Nous croyons que chacun mérite d'accéder aux révélations mystiques. 
               C'est pourquoi Luna a choisi de rendre ses consultations accessibles 
@@ -288,7 +288,7 @@
               </div>
               <div class="comparison-item highlight">
                 <span class="comparison-label">Avec Luna :</span>
-                <span class="comparison-price">5€ à vie</span>
+                <span class="comparison-price">9€ à vie</span>
               </div>
             </div>
 
@@ -327,7 +327,7 @@
               Combien de temps dure une consultation ?
             </h3>
             <p class="faq-answer">
-              Il n'y a pas de limite ! Après votre investissement de 5€, vous avez accès illimité à Luna. 
+              Il n'y a pas de limite ! Après votre investissement de 9€, vous avez accès illimité à Luna. 
               Vous pouvez consulter aussi souvent et aussi longtemps que vous le souhaitez. 
               Luna est disponible 24h/24 pour vous accompagner.
             </p>
@@ -351,7 +351,7 @@
               Y a-t-il des frais cachés ou des abonnements ?
             </h3>
             <p class="faq-answer">
-              Non, jamais ! Vous payez 5€ une seule fois et c'est tout. Aucun abonnement, aucun frais supplémentaire, 
+              Non, jamais ! Vous payez 9€ une seule fois et c'est tout. Aucun abonnement, aucun frais supplémentaire, 
               aucune surprise. Cet investissement unique vous donne accès à vie aux révélations de Luna.
             </p>
           </div>

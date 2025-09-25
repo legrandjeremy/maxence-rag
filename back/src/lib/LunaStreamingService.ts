@@ -33,6 +33,12 @@ interface LunaStreamingRequest {
   chatId?: string;
   useReasoning?: boolean;
   enableKnowledge?: boolean;
+  customerInfo?: {
+    firstName?: string;
+    lastName?: string;
+    gender?: string;
+    birthDate?: string;
+  };
 }
 
 interface RAGDocument {
@@ -129,8 +135,8 @@ export class LunaStreamingService {
       region: process.env.BEDROCK_REGION || 'us-east-1'
     });
     
-    // Get the French prompt from BedrockService
-    return bedrockService['buildFrenchLunaPrompt'](stage);
+    // Get the French prompt from BedrockService with customer info
+    return bedrockService['buildFrenchLunaPrompt'](stage, request.customerInfo?.firstName, request.customerInfo);
   }
 
   private getStageSpecificPrompt(stage: ConversationStage): string {

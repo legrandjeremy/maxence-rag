@@ -14,7 +14,7 @@
     <div class="payment-form-content">
       <!-- Benefits section -->
       <div class="benefits-section">
-        <h4 class="benefits-title">✨ Abonnement Luna Total — 9€</h4>
+        <h4 class="benefits-title">✨ Luna Total — 9€</h4>
         
         <div class="benefits-list">
           <div class="benefit-item">

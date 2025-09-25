@@ -1,16 +1,16 @@
 resource "aws_s3_bucket" "application_front" {
-  provider           = aws.infra_eu_central_2
-  bucket             = "${var.ENVIRONMENT}-uci-maxence-rag-application-front-eu-central-2"
+  provider           = aws.infra_eu_west_3
+  bucket             = "${var.ENVIRONMENT}-luna-medium-application-front-eu-west-3"
 }
 
 resource "aws_s3_bucket_policy" "default" {
-  provider           = aws.infra_eu_central_2
+  provider           = aws.infra_eu_west_3
   bucket = aws_s3_bucket.application_front.id
   policy = data.aws_iam_policy_document.cloudfront_oac_access.json
 }
 
 data "aws_iam_policy_document" "cloudfront_oac_access" {
-  provider           = aws.infra_eu_central_2
+  provider           = aws.infra_eu_west_3
   statement {
     principals {
       type        = "Service"

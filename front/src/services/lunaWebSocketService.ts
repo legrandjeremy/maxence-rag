@@ -26,6 +26,7 @@ export interface LunaStreamingRequest {
     lastName: string;
     email: string;
     birthDate: string;
+    gender: string;
   };
 }
 
