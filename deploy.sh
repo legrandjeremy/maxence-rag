@@ -130,6 +130,7 @@ load_environment_variables() {
     export CLOUDFRONT_DOMAIN="$CLOUDFRONT_DOMAIN"
     export STRIPE_SECRET_KEY="${STRIPE_SECRET_KEY:-}"
     export STRIPE_PUBLISHABLE_KEY="${STRIPE_PUBLISHABLE_KEY:-}"
+    export STRIPE_WEBHOOK_SECRET="${STRIPE_WEBHOOK_SECRET:-}"
     export WSS_URL="${WSS_URL:-}"
     
     log_success "Environment variables loaded"
@@ -267,7 +268,10 @@ deploy_backend() {
             Auth0AdminRoleId="$SAM_AUTH0_ADMIN_ROLE_ID" \
             Auth0TeamManagerRoleId="$SAM_AUTH0_TEAM_MANAGER_ROLE_ID" \
             Auth0UserRoleId="$SAM_AUTH0_USER_ROLE_ID" \
-            CloudfrontPublicUrl="$CLOUDFRONT_DOMAIN"
+            CloudfrontPublicUrl="$CLOUDFRONT_DOMAIN" \
+            StripeSecretKey="$STRIPE_SECRET_KEY" \
+            StripeWebhookSecret="$STRIPE_WEBHOOK_SECRET" \
+            StripePublishableKey="$STRIPE_PUBLISHABLE_KEY"
     
     # Get API Gateway URL from CloudFormation outputs
     log_info "Retrieving API Gateway URL..."
@@ -293,6 +297,16 @@ deploy_backend() {
 
 deploy_frontend() {
     log_info "Starting frontend deployment..."
+    # Get API URL
+    log_info "Retrieving API URL from SSM..."
+    API_URL=$(aws ssm get-parameter \
+        --name "/$ENVIRONMENT/luna-front/api_url" \
+        --query 'Parameter.Value' \
+        --output text 2>&1)
+    if [[ $? -ne 0 ]]; then
+        log_warning "Failed to retrieve API URL: $API_URL"
+        API_URL=""
+    fi
     
     cd "$FRONTEND_DIR"
     
@@ -304,6 +318,7 @@ deploy_frontend() {
     log_info "Creating environment configuration for build..."
     cat > .env << EOF
 API_URL=$API_URL
+VITE_API_URL=$API_URL
 AUTH0_DOMAIN=$AUTH0_DOMAIN
 AUTH0_CLIENT_ID=$AUTH0_CLIENT_ID
 LUNA_WS_ENDPOINT=$WSS_URL
@@ -338,17 +353,6 @@ EOF
     if [[ $? -ne 0 ]]; then
         log_warning "Failed to retrieve CloudFront domain: $CLOUDFRONT_DOMAIN"
         CLOUDFRONT_DOMAIN=""
-    fi
-    
-    # Get API URL
-    log_info "Retrieving API URL from SSM..."
-    API_URL=$(aws ssm get-parameter \
-        --name "/$ENVIRONMENT/luna-front/api_url" \
-        --query 'Parameter.Value' \
-        --output text 2>&1)
-    if [[ $? -ne 0 ]]; then
-        log_warning "Failed to retrieve API URL: $API_URL"
-        API_URL=""
     fi
 
     export CLOUDFRONT_DOMAIN="$CLOUDFRONT_DOMAIN"
@@ -527,7 +531,7 @@ main() {
     else
         log_info "Skipping frontend deployment"
     fi
-    
+
     echo ""
     log_success "=== Deployment completed successfully! ==="
     

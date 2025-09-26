@@ -46,6 +46,12 @@ Parameters:
   CloudfrontPublicUrl:
     Type: String
     Description: Cloudfront Public URL
+  StripeSecretKey:
+    Type: String
+    Description: Stripe Secret Key
+  StripeWebhookSecret:
+    Type: String
+    Description: Stripe Webhook Secret
 
 Globals:
   Function:
@@ -58,8 +64,8 @@ Globals:
     Environment:
       Variables:
         ENVIRONMENT: !Ref Environment
-        STRIPE_SECRET_KEY: "sk_test_51RwQBw0Xrngfa9BoHFO3cedbV8WbNr2iHA7SN3eRZcuSnF2NrzBrphTDY9JwBHnEyX0gIgqx7JBDqKAWFyPa8Klf00MBfGGTEe"
-        STRIPE_WEBHOOK_SECRET: "whsec_7N5UUz66uBexouvbHTiXRuurbab16EYL"
+        STRIPE_SECRET_KEY: !Ref StripeSecretKey
+        STRIPE_WEBHOOK_SECRET: !Ref StripeWebhookSecret
 
 Resources:
   ApiUrlSSMParameter:
