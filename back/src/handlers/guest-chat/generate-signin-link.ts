@@ -88,10 +88,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     await chatService.storeSigninToken(token, signinTokenData);
 
     // Generate signin URL
-    const baseUrl = process.env.CLOUDFRONT_DOMAIN || 'https://your-domain.com';
+    const baseUrl = process.env.CLOUDFRONT_DOMAIN || 'your-domain.com';
     const signinUrl = chatId 
-      ? `${baseUrl}/luna?token=${token}&chat=${chatId}`
-      : `${baseUrl}/luna?token=${token}`;
+      ? `https://${baseUrl}/luna?token=${token}&chat=${chatId}`
+      : `https://${baseUrl}/luna?token=${token}`;
 
     console.log(`Generated signin link for ${userEmail}: ${signinUrl}`);
 

@@ -93,7 +93,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         id: chat.id,
         title: chat.title,
         lastMessageAt: chat.lastMessageAt,
-        signinUrl: `${baseUrl}/welcome.html?token=${token}&chat=${chat.id}`
+        signinUrl: `https://${baseUrl}/welcome.html?token=${token}&chat=${chat.id}`
       });
     }
 
@@ -101,12 +101,15 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const generalToken = uuidv4();
     await chatService.storeSigninToken(generalToken, {
       email: userEmail,
-      chatId: chatId,
+      chatId: chatId || undefined, // Only include if provided
       expiresAt,
       createdAt
     });
 
-    const generalSigninUrl = `${baseUrl}/welcome.html?token=${generalToken}&chat=${chatId}`;
+    // Build signin URL - only include chat parameter if chatId is defined
+    const generalSigninUrl = chatId 
+      ? `https://${baseUrl}/welcome.html?token=${generalToken}&chat=${chatId}`
+      : `https://${baseUrl}/welcome.html?token=${generalToken}`;
 
     // Send email using SES
     const emailService = new EmailService();

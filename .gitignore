@@ -46,3 +46,4 @@ build/
 tmp/
 temp/ 
 env.staging
+env.prod

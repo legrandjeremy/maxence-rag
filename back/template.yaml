@@ -42,7 +42,7 @@ Parameters:
   BedrockKnowledgeBaseId:
     Type: String
     Description: Bedrock Knowledge Base ID
-    Default: X9CIYS980F
+    Default: QHDUDVJUJN
   CloudfrontPublicUrl:
     Type: String
     Description: Cloudfront Public URL
@@ -975,7 +975,7 @@ Resources:
       Environment:
         Variables:
           CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
-          BEDROCK_KNOWLEDGE_BASE_ID: X9CIYS980F
+          BEDROCK_KNOWLEDGE_BASE_ID: QHDUDVJUJN
       Events:
         CreateChat:
           Type: HttpApi
@@ -1008,7 +1008,7 @@ Resources:
       Environment:
         Variables:
           CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
-          BEDROCK_KNOWLEDGE_BASE_ID: X9CIYS980F
+          BEDROCK_KNOWLEDGE_BASE_ID: QHDUDVJUJN
       Events:
         GetChats:
           Type: HttpApi
@@ -1043,7 +1043,7 @@ Resources:
       Environment:
         Variables:
           CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
-          BEDROCK_KNOWLEDGE_BASE_ID: X9CIYS980F
+          BEDROCK_KNOWLEDGE_BASE_ID: QHDUDVJUJN
       Events:
         SendMessage:
           Type: HttpApi
@@ -1076,7 +1076,7 @@ Resources:
       Environment:
         Variables:
           CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
-          BEDROCK_KNOWLEDGE_BASE_ID: X9CIYS980F
+          BEDROCK_KNOWLEDGE_BASE_ID: QHDUDVJUJN
       Events:
         GetChatHistory:
           Type: HttpApi
@@ -1109,7 +1109,7 @@ Resources:
       Environment:
         Variables:
           CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
-          BEDROCK_KNOWLEDGE_BASE_ID: X9CIYS980F
+          BEDROCK_KNOWLEDGE_BASE_ID: QHDUDVJUJN
       Events:
         UpdateChat:
           Type: HttpApi
@@ -1142,7 +1142,7 @@ Resources:
       Environment:
         Variables:
           CLOUDFRONT_DOMAIN: !Ref CloudfrontPublicUrl
-          BEDROCK_KNOWLEDGE_BASE_ID: X9CIYS980F
+          BEDROCK_KNOWLEDGE_BASE_ID: QHDUDVJUJN
       Events:
         DeleteChat:
           Type: HttpApi

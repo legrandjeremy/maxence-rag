@@ -904,10 +904,17 @@ const formatLunaResponse = (content: string): string => {
     .replace(/\n/g, '<br>')
     .replace(/✨/g, '<span class="sparkle">✨</span>');
   
+  // 🌙 IMPROVEMENT: Add line break after each sentence for better readability
+  // Match sentence endings: period, question mark, or exclamation point followed by space or end of string
+  // But avoid breaking on abbreviations like "M.", "Dr.", etc.
+  formatted = formatted
+    .replace(/([.!?])(\s+)(?=[A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ"«])/g, '$1<br><br>$2')
+    .replace(/([.!?])$/g, '$1<br>');
+  
   // Clean up extra spaces and line breaks
   return formatted
     .replace(/\s+/g, ' ')
-    .replace(/(<br>\s*){2,}/g, '<br><br>')
+    .replace(/(<br>\s*){3,}/g, '<br><br>')
     .trim();
 };
 

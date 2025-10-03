@@ -1,9 +1,11 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import Stripe from 'stripe';
 import { createResponse, chatService } from '../../lib/common';
+import { EmailService } from '../../lib/EmailService';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', { apiVersion: '2024-04-10' });
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
+const emailService = new EmailService();
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   console.log('🔔 Stripe Webhook: Received event', {
@@ -39,6 +41,19 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           // Mark chat as paid using ChatService
           await chatService.markChatAsPaid(email.toLowerCase().trim(), chatId);
           console.log(`Successfully processed checkout payment for chat ${chatId}`);
+          
+          // 🌙 Send payment confirmation email to customer
+          try {
+            await emailService.sendPaymentConfirmationEmail({
+              userEmail: email.toLowerCase().trim(),
+              customerName: session.customer_details?.name || undefined,
+              chatTitle: session.metadata?.chatTitle || undefined
+            });
+            console.log(`✨ Payment confirmation email sent to ${email}`);
+          } catch (emailError) {
+            console.error(`⚠️ Failed to send payment confirmation email to ${email}:`, emailError);
+            // Don't fail the webhook even if email fails
+          }
         } catch (error) {
           console.error(`Error marking chat as paid (checkout):`, error);
           // Don't fail the webhook - Stripe needs a 200 response
@@ -62,6 +77,19 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           // Mark chat as paid using ChatService
           await chatService.markChatAsPaid(email.toLowerCase().trim(), chatId);
           console.log(`Successfully processed payment intent for chat ${chatId}`);
+          
+          // 🌙 Send payment confirmation email to customer
+          try {
+            await emailService.sendPaymentConfirmationEmail({
+              userEmail: email.toLowerCase().trim(),
+              customerName: paymentIntent.metadata?.customerName || undefined,
+              chatTitle: paymentIntent.metadata?.chatTitle || undefined
+            });
+            console.log(`✨ Payment confirmation email sent to ${email}`);
+          } catch (emailError) {
+            console.error(`⚠️ Failed to send payment confirmation email to ${email}:`, emailError);
+            // Don't fail the webhook even if email fails
+          }
         } catch (error) {
           console.error(`Error marking chat as paid (payment intent):`, error);
           // Don't fail the webhook - Stripe needs a 200 response
